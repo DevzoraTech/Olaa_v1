@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/supabase_auth_service.dart';
 import '../../../../core/services/verification_service.dart';
-import '../../../../features/verification/domain/models/verification_models.dart';
-import '../../../../features/verification/presentation/screens/verification_submission_screen.dart';
+import 'package:pulse_campus/Features/verification/domain/models/verification_models.dart';
+import 'package:pulse_campus/Features/verification/presentation/screens/verification_submission_screen.dart';
 import '../screens/edit_bio_screen.dart';
 import '../screens/edit_profile_screen.dart';
 

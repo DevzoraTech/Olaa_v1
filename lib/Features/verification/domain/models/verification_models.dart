@@ -194,10 +194,3 @@ class VerificationSubmission {
   bool get isApproved => status == VerificationStatus.approved;
   bool get isRejected => status == VerificationStatus.rejected;
 }
-
-
-
-
-
-
-

@@ -8,6 +8,7 @@ class QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final actions = [
       QuickActionItem(
         icon: Icons.home,
@@ -92,7 +93,7 @@ class QuickActions extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15, // Reduced font size
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey[900],
+                    color: isDarkMode ? Colors.white : Colors.grey[900],
                   ),
                 ),
               ],
@@ -170,17 +171,29 @@ class QuickActionItem extends StatelessWidget {
               height: 50, // Further reduced height
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
+                  colors:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? [color.withOpacity(0.25), color.withOpacity(0.15)]
+                          : [color.withOpacity(0.15), color.withOpacity(0.05)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(
                   12, // Further reduced border radius
                 ),
-                border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+                border: Border.all(
+                  color:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? color.withOpacity(0.3)
+                          : color.withOpacity(0.2),
+                  width: 1.5,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.15),
+                    color:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? color.withOpacity(0.2)
+                            : color.withOpacity(0.15),
                     blurRadius: 5, // Further reduced blur
                     offset: const Offset(0, 2), // Further reduced offset
                   ),
@@ -200,7 +213,10 @@ class QuickActionItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 9, // Further reduced font size
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey[300]
+                        : Colors.grey[800],
               ),
               textAlign: TextAlign.center,
               maxLines: 2,

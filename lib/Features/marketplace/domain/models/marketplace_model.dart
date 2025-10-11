@@ -17,6 +17,8 @@ class MarketplaceItem {
   final List<String> images;
   final String condition;
   final String location;
+  final String? contactPhone;
+  final String? contactEmail;
 
   MarketplaceItem({
     required this.id,
@@ -34,6 +36,8 @@ class MarketplaceItem {
     this.images = const [],
     this.condition = 'Good',
     this.location = 'Campus',
+    this.contactPhone,
+    this.contactEmail,
   });
 }
 

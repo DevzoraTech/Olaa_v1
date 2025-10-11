@@ -1,9 +1,12 @@
 // Presentation Layer - Chat Header Widget
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../screens/new_chat_screen.dart';
 
 class ChatHeader extends StatelessWidget {
-  const ChatHeader({super.key});
+  final VoidCallback? onChatCreated;
+
+  const ChatHeader({super.key, this.onChatCreated});
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +34,14 @@ class ChatHeader extends StatelessWidget {
                   subtitle: 'Start conversation',
                   color: AppTheme.primaryColor,
                   onTap: () {
-                    // TODO: Implement new chat functionality
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) =>
+                                NewChatScreen(onChatCreated: onChatCreated),
+                      ),
+                    );
                   },
                 ),
               ),
@@ -44,6 +54,12 @@ class ChatHeader extends StatelessWidget {
                   color: Colors.green[600]!,
                   onTap: () {
                     // TODO: Implement new group functionality
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Group chat functionality coming soon!'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
                   },
                 ),
               ),

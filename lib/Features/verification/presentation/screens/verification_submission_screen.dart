@@ -5,7 +5,7 @@ import 'dart:io';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/verification_service.dart';
 import '../../../../core/services/supabase_auth_service.dart';
-import '../../domain/models/verification_models.dart';
+import 'package:pulse_campus/Features/verification/domain/models/verification_models.dart';
 
 class VerificationSubmissionScreen extends StatefulWidget {
   final VerificationSubmissionType submissionType;

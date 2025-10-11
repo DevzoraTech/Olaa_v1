@@ -1,6 +1,8 @@
 // Data Layer - Supabase Database Service
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:path/path.dart' as path;
 import '../../core/config/supabase_config.dart';
 
 class SupabaseDatabaseService {
@@ -398,6 +400,521 @@ class SupabaseDatabaseService {
     }
   }
 
+  // Increment view count for a marketplace item (only once per user)
+  Future<void> incrementMarketplaceItemViews(
+    String itemId,
+    String userId,
+  ) async {
+    try {
+      // Check if user has already viewed this item
+      final existingView =
+          await SupabaseConfig.from('marketplace_item_views')
+              .select('id')
+              .eq('item_id', itemId)
+              .eq('user_id', userId)
+              .maybeSingle();
+
+      // If user hasn't viewed this item before, record the view
+      if (existingView == null) {
+        // Insert view record
+        await SupabaseConfig.from('marketplace_item_views').insert({
+          'item_id': itemId,
+          'user_id': userId,
+          'viewed_at': DateTime.now().toIso8601String(),
+        });
+      }
+    } catch (e) {
+      print('Error incrementing marketplace item views: ${e.toString()}');
+    }
+  }
+
+  // Get updated view count for a specific marketplace item
+  Future<int> getMarketplaceItemViewCount(String itemId) async {
+    try {
+      // Count directly from marketplace_item_views table
+      final response = await SupabaseConfig.from(
+        'marketplace_item_views',
+      ).select('id').eq('item_id', itemId);
+
+      return response.length;
+    } catch (e) {
+      print('Error getting marketplace item view count: ${e.toString()}');
+      return 0;
+    }
+  }
+
+  // File Upload Operations
+
+  // Get MIME type from file extension
+  String _getMimeType(String extension) {
+    switch (extension.toLowerCase()) {
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.mp4':
+        return 'video/mp4';
+      case '.avi':
+        return 'video/avi';
+      case '.mov':
+        return 'video/quicktime';
+      case '.pdf':
+        return 'application/pdf';
+      case '.doc':
+        return 'application/msword';
+      case '.docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case '.xls':
+        return 'application/vnd.ms-excel';
+      case '.xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case '.ppt':
+        return 'application/vnd.ms-powerpoint';
+      case '.pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case '.zip':
+        return 'application/zip';
+      case '.rar':
+        return 'application/x-rar-compressed';
+      case '.mp3':
+        return 'audio/mpeg';
+      case '.wav':
+        return 'audio/wav';
+      case '.aac':
+        return 'audio/aac';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  // Download file from Supabase Storage
+  Future<Uint8List?> downloadFile(String fileUrl) async {
+    try {
+      print('DEBUG: Downloading file from: $fileUrl');
+
+      // Extract file path from URL
+      final uri = Uri.parse(fileUrl);
+      final pathSegments = uri.pathSegments;
+
+      if (pathSegments.length < 3) {
+        print('ERROR: Invalid file URL format');
+        return null;
+      }
+
+      // Reconstruct the file path
+      final bucketName = pathSegments[pathSegments.length - 3];
+      final fileName = pathSegments[pathSegments.length - 1];
+      final chatId = pathSegments[pathSegments.length - 2];
+      final filePath = '$chatId/$fileName';
+
+      print('DEBUG: Downloading from bucket: $bucketName, path: $filePath');
+
+      final response = await SupabaseConfig.client.storage
+          .from(bucketName)
+          .download(filePath);
+
+      print(
+        'DEBUG: File downloaded successfully, size: ${response.length} bytes',
+      );
+      return response;
+    } catch (e) {
+      print('ERROR: Failed to download file: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Chat Operations
+
+  // Create a new chat
+  Future<Map<String, dynamic>?> createChat({
+    required bool isGroup,
+    String? groupName,
+    String? groupDescription,
+    String? groupImageUrl,
+  }) async {
+    try {
+      final response =
+          await SupabaseConfig.from('chats')
+              .insert({
+                'is_group': isGroup,
+                'group_name': groupName,
+                'group_description': groupDescription,
+                'group_image_url': groupImageUrl,
+                'created_at': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+                'last_message_at': DateTime.now().toIso8601String(),
+              })
+              .select()
+              .single();
+
+      return response;
+    } catch (e) {
+      print('Error creating chat: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Create a direct chat between two users
+  Future<String?> createDirectChat(String user1Id, String user2Id) async {
+    try {
+      // Use the database function to create direct chat (bypasses RLS issues)
+      final response = await SupabaseConfig.client.rpc(
+        'create_direct_chat',
+        params: {'user1_uuid': user1Id, 'user2_uuid': user2Id},
+      );
+
+      return response as String?;
+    } catch (e) {
+      print('Error creating direct chat: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Add participant to chat
+  Future<bool> addChatParticipant({
+    required String chatId,
+    required String userId,
+    bool isAdmin = false,
+  }) async {
+    try {
+      await SupabaseConfig.from('chat_participants').insert({
+        'chat_id': chatId,
+        'user_id': userId,
+        'joined_at': DateTime.now().toIso8601String(),
+        'last_read_at': DateTime.now().toIso8601String(),
+        'is_admin': isAdmin,
+      });
+
+      return true;
+    } catch (e) {
+      print('Error adding chat participant: ${e.toString()}');
+      return false;
+    }
+  }
+
+  // Get user's chats
+  Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
+    try {
+      // First try the database function
+      try {
+        final response = await SupabaseConfig.client.rpc(
+          'get_user_chats',
+          params: {'user_uuid': userId},
+        );
+        return List<Map<String, dynamic>>.from(response);
+      } catch (e) {
+        print('Database function failed, trying direct query: $e');
+
+        // Fallback to direct query without joins
+        final response = await SupabaseConfig.from('chats')
+            .select('*')
+            .inFilter('id', await _getUserChatIds(userId))
+            .order('updated_at', ascending: false);
+
+        return List<Map<String, dynamic>>.from(response);
+      }
+    } catch (e) {
+      print('Error getting user chats: ${e.toString()}');
+      return [];
+    }
+  }
+
+  // Helper method to get user's chat IDs
+  Future<List<String>> _getUserChatIds(String userId) async {
+    try {
+      final response = await SupabaseConfig.from(
+        'chat_participants',
+      ).select('chat_id').eq('user_id', userId);
+
+      return response.map((item) => item['chat_id'] as String).toList();
+    } catch (e) {
+      print('Error getting user chat IDs: $e');
+      return [];
+    }
+  }
+
+  // Get chat participants
+  Future<List<Map<String, dynamic>>> getChatParticipants(String chatId) async {
+    try {
+      // First try the database function
+      try {
+        final response = await SupabaseConfig.client.rpc(
+          'get_chat_participants_with_profiles',
+          params: {'chat_uuid': chatId},
+        );
+        return List<Map<String, dynamic>>.from(response);
+      } catch (e) {
+        print('Database function failed, trying direct query: $e');
+
+        // Fallback to separate queries
+        final participants = await SupabaseConfig.from(
+          'chat_participants',
+        ).select('*').eq('chat_id', chatId);
+
+        if (participants.isEmpty) return [];
+
+        final userIds = participants.map((p) => p['user_id']).toList();
+        final profiles = await SupabaseConfig.from(
+          'profiles',
+        ).select('*').inFilter('id', userIds);
+
+        final result = <Map<String, dynamic>>[];
+        for (final participant in participants) {
+          final profile = profiles.firstWhere(
+            (p) => p['id'] == participant['user_id'],
+            orElse: () => <String, dynamic>{},
+          );
+          result.add({...participant, 'profile': profile});
+        }
+
+        return result;
+      }
+    } catch (e) {
+      print('Error getting chat participants: ${e.toString()}');
+      return [];
+    }
+  }
+
+  // Send a message
+  Future<Map<String, dynamic>?> sendMessage({
+    required String chatId,
+    required String senderId,
+    required String content,
+    String type = 'text',
+    File? file,
+    String? fileUrl,
+    String? fileName,
+    int? fileSize,
+    String? fileType,
+    String? replyToMessageId,
+    Function(double)? onUploadProgress,
+  }) async {
+    try {
+      String? finalFileUrl = fileUrl;
+      String? finalFileName = fileName;
+      int? finalFileSize = fileSize;
+      String? finalFileType = fileType;
+
+      // If a file is provided, upload it first
+      if (file != null) {
+        print('DEBUG: Uploading file before sending message');
+
+        finalFileUrl = await uploadFile(
+          file: file,
+          chatId: chatId,
+          senderId: senderId,
+          onProgress: onUploadProgress,
+        );
+
+        if (finalFileUrl == null) {
+          print('ERROR: Failed to upload file');
+          return null;
+        }
+
+        // Set file metadata if not provided
+        finalFileName ??= path.basename(file.path);
+        finalFileSize ??= await file.length();
+        finalFileType ??= _getMimeType(path.extension(file.path));
+
+        print('DEBUG: File uploaded successfully: $finalFileUrl');
+      }
+
+      // Build the insert data with all available fields
+      final insertData = <String, dynamic>{
+        'chat_id': chatId,
+        'sender_id': senderId,
+        'message': content,
+        'type': type,
+        'is_delivered': false,
+        'is_read': false,
+        'is_edited': false,
+      };
+
+      // Add optional fields if they have values
+      if (finalFileUrl != null) insertData['file_url'] = finalFileUrl;
+      if (finalFileName != null) insertData['file_name'] = finalFileName;
+      if (finalFileSize != null) insertData['file_size'] = finalFileSize;
+      if (finalFileType != null) insertData['file_type'] = finalFileType;
+      if (replyToMessageId != null)
+        insertData['reply_to_message_id'] = replyToMessageId;
+
+      final response =
+          await SupabaseConfig.from(
+            'messages',
+          ).insert(insertData).select().single();
+
+      return response;
+    } catch (e) {
+      print('Error sending message: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Get chat messages
+  Future<List<Map<String, dynamic>>> getChatMessages({
+    required String chatId,
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      // Get messages without joins to avoid schema cache issues
+      dynamic query = SupabaseConfig.from(
+        'messages',
+      ).select('*').eq('chat_id', chatId).order('created_at', ascending: true);
+
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      if (offset != null) {
+        query = query.range(offset, offset + (limit ?? 50) - 1);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error getting chat messages: ${e.toString()}');
+      return [];
+    }
+  }
+
+  // Search users for new chat
+  Future<List<Map<String, dynamic>>> searchUsers({
+    required String searchTerm,
+    int? limit,
+  }) async {
+    try {
+      dynamic query = SupabaseConfig.from('profiles')
+          .select('*')
+          .or(
+            'first_name.ilike.%$searchTerm%,last_name.ilike.%$searchTerm%,email.ilike.%$searchTerm%',
+          );
+
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      final response = await query;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error searching users: ${e.toString()}');
+      return [];
+    }
+  }
+
+  // Check if direct chat exists between two users
+  Future<String?> getExistingDirectChat(String user1Id, String user2Id) async {
+    try {
+      // Use the database function to avoid RLS recursion
+      final response = await SupabaseConfig.client.rpc(
+        'get_existing_direct_chat',
+        params: {'user1_uuid': user1Id, 'user2_uuid': user2Id},
+      );
+
+      return response as String?;
+    } catch (e) {
+      print('Error checking existing direct chat: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Update last read timestamp for a user in a chat
+  Future<bool> updateLastReadAt({
+    required String chatId,
+    required String userId,
+  }) async {
+    try {
+      await SupabaseConfig.from('chat_participants')
+          .update({'last_read_at': DateTime.now().toIso8601String()})
+          .eq('chat_id', chatId)
+          .eq('user_id', userId);
+
+      return true;
+    } catch (e) {
+      print('Error updating last read at: ${e.toString()}');
+      return false;
+    }
+  }
+
+  // Update user's last seen timestamp
+  Future<bool> updateUserLastSeen(String userId) async {
+    try {
+      await SupabaseConfig.from('profiles')
+          .update({'last_seen': DateTime.now().toIso8601String()})
+          .eq('id', userId);
+
+      return true;
+    } catch (e) {
+      print('Error updating user last seen: ${e.toString()}');
+      return false;
+    }
+  }
+
+  // Update user's online status
+  Future<bool> updateUserOnlineStatus(String userId, bool isOnline) async {
+    try {
+      await SupabaseConfig.from('profiles')
+          .update({
+            'is_online': isOnline,
+            'last_seen': DateTime.now().toIso8601String(),
+          })
+          .eq('id', userId);
+
+      return true;
+    } catch (e) {
+      print('Error updating user online status: ${e.toString()}');
+      return false;
+    }
+  }
+
+  // Get real-time user status
+  Future<Map<String, dynamic>?> getUserStatus(String userId) async {
+    try {
+      final response =
+          await SupabaseConfig.from(
+            'profiles',
+          ).select('is_online, last_seen').eq('id', userId).maybeSingle();
+
+      return response;
+    } catch (e) {
+      print('Error getting user status: ${e.toString()}');
+      return null;
+    }
+  }
+
+  // Mark message as read
+  Future<bool> markMessageAsRead(String messageId, String userId) async {
+    try {
+      final response = await SupabaseConfig.client.rpc(
+        'mark_message_as_read',
+        params: {'message_uuid': messageId, 'user_uuid': userId},
+      );
+      return response as bool;
+    } catch (e) {
+      print('Error marking message as read: ${e.toString()}');
+      return false;
+    }
+  }
+
+  // Mark all messages in a chat as read
+  Future<int> markChatMessagesAsRead(String chatId, String userId) async {
+    try {
+      final response = await SupabaseConfig.client.rpc(
+        'mark_chat_messages_as_read',
+        params: {'chat_uuid': chatId, 'user_uuid': userId},
+      );
+      return response as int;
+    } catch (e) {
+      print('Error marking chat messages as read: ${e.toString()}');
+      return 0;
+    }
+  }
+
   // Notifications Operations
 
   Future<Map<String, dynamic>?> createNotification(
@@ -450,17 +967,86 @@ class SupabaseDatabaseService {
 
   // File Upload Operations
 
+  // Upload file to Supabase Storage
   Future<String?> uploadFile({
-    required String bucket,
-    required String fileName,
-    required String filePath,
+    required File file,
+    required String chatId,
+    required String senderId,
+    Function(double)? onProgress,
   }) async {
     try {
-      await SupabaseConfig.storageFrom(bucket).upload(fileName, filePath);
-      return SupabaseConfig.storageFrom(bucket).getPublicUrl(fileName);
+      final fileName = path.basename(file.path);
+      final fileExtension = path.extension(fileName);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final uniqueFileName = '${timestamp}_${senderId}_$fileName';
+
+      // Create folder path: chat-files/chatId/filename
+      final filePath = '$chatId/$uniqueFileName';
+
+      print('DEBUG: Uploading file: $fileName to path: $filePath');
+      print('DEBUG: File size: ${await file.length()} bytes');
+
+      // Check if bucket exists, create if not
+      await _ensureBucketExists();
+
+      // Upload file to Supabase Storage
+      final response = await SupabaseConfig.client.storage
+          .from('chat-files')
+          .uploadBinary(
+            filePath,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(
+              contentType: _getMimeType(fileExtension),
+              upsert: false,
+            ),
+          );
+
+      if (response.isNotEmpty) {
+        // Get the public URL
+        final publicUrl = SupabaseConfig.client.storage
+            .from('chat-files')
+            .getPublicUrl(filePath);
+
+        print('DEBUG: File uploaded successfully: $publicUrl');
+        return publicUrl;
+      } else {
+        print('ERROR: File upload failed - empty response');
+        return null;
+      }
     } catch (e) {
-      print('Error uploading file: ${e.toString()}');
+      print('ERROR: Failed to upload file: ${e.toString()}');
+
+      // If bucket doesn't exist, provide helpful error message
+      if (e.toString().contains('Bucket not found')) {
+        print('ERROR: The chat-files storage bucket does not exist.');
+        print(
+          'ERROR: Please run the SETUP_CHAT_STORAGE_BUCKET.sql script in your Supabase dashboard.',
+        );
+      }
+
       return null;
+    }
+  }
+
+  // Ensure the chat-files bucket exists
+  Future<void> _ensureBucketExists() async {
+    try {
+      // Try to list files from the bucket to check if it exists
+      await SupabaseConfig.client.storage.from('chat-files').list();
+      print('DEBUG: chat-files bucket exists');
+    } catch (e) {
+      if (e.toString().contains('Bucket not found')) {
+        print(
+          'ERROR: chat-files bucket does not exist. Please create it first.',
+        );
+        print(
+          'ERROR: Run the SETUP_CHAT_STORAGE_BUCKET.sql script in your Supabase dashboard.',
+        );
+        throw Exception(
+          'Storage bucket not found. Please set up the chat-files bucket first.',
+        );
+      }
+      rethrow;
     }
   }
 

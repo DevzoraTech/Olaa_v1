@@ -1,6 +1,9 @@
 // Presentation Layer - Marketplace Detail Screen
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/supabase_database_service.dart';
+import '../../../../core/services/supabase_auth_service.dart';
 import '../../domain/models/marketplace_model.dart';
 import '../widgets/item_image_carousel.dart';
 import '../widgets/seller_profile_card.dart';
@@ -18,6 +21,38 @@ class MarketplaceDetailScreen extends StatefulWidget {
 
 class _MarketplaceDetailScreenState extends State<MarketplaceDetailScreen> {
   bool _isFavorite = false;
+  bool _showFullDetails = false;
+  int _currentViewCount = 0;
+  final SupabaseDatabaseService _databaseService =
+      SupabaseDatabaseService.instance;
+  final SupabaseAuthService _authService = SupabaseAuthService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentViewCount = widget.item.views;
+    _trackView();
+  }
+
+  void _trackView() async {
+    // Track view when screen is opened
+    final user = _authService.currentUser;
+    if (user != null) {
+      await _databaseService.incrementMarketplaceItemViews(
+        widget.item.id,
+        user.id,
+      );
+
+      // Update view count in real-time
+      final updatedViewCount = await _databaseService
+          .getMarketplaceItemViewCount(widget.item.id);
+      if (mounted) {
+        setState(() {
+          _currentViewCount = updatedViewCount;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +117,7 @@ class _MarketplaceDetailScreenState extends State<MarketplaceDetailScreen> {
               }(),
             ),
 
-            // Item Details
+            // Item Details - Condensed View
             Container(
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(20),
@@ -170,7 +205,7 @@ class _MarketplaceDetailScreenState extends State<MarketplaceDetailScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Item Info
+                  // Basic Info (Always Visible)
                   _buildInfoRow(
                     Icons.category_outlined,
                     'Category',
@@ -181,63 +216,128 @@ class _MarketplaceDetailScreenState extends State<MarketplaceDetailScreen> {
                     'Condition',
                     widget.item.condition,
                   ),
-                  _buildInfoRow(
-                    Icons.location_on_outlined,
-                    'Location',
-                    widget.item.location,
-                  ),
-                  _buildInfoRow(
-                    Icons.visibility_outlined,
-                    'Views',
-                    '${widget.item.views}',
-                  ),
-                  _buildInfoRow(
-                    Icons.access_time_outlined,
-                    'Posted',
-                    widget.item.timePosted,
-                  ),
 
-                  const SizedBox(height: 20),
+                  // Read More Section
+                  if (!_showFullDetails) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _showFullDetails = true;
+                          });
+                        },
+                        icon: Icon(
+                          Icons.expand_more,
+                          color: AppTheme.primaryColor,
+                          size: 20,
+                        ),
+                        label: Text(
+                          'Read More',
+                          style: TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
 
-                  // Description
-                  Text(
-                    'Description',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[800],
+                  // Full Details (Hidden by default)
+                  if (_showFullDetails) ...[
+                    const SizedBox(height: 16),
+                    _buildInfoRow(
+                      Icons.location_on_outlined,
+                      'Location',
+                      widget.item.location,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.item.description,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                      height: 1.5,
+                    _buildInfoRow(
+                      Icons.visibility_outlined,
+                      'Views',
+                      '$_currentViewCount',
                     ),
-                  ),
+                    _buildInfoRow(
+                      Icons.access_time_outlined,
+                      'Posted',
+                      widget.item.timePosted,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Description
+                    Text(
+                      'Description',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.item.description,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        height: 1.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Read Less Button
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _showFullDetails = false;
+                          });
+                        },
+                        icon: Icon(
+                          Icons.expand_less,
+                          color: AppTheme.primaryColor,
+                          size: 20,
+                        ),
+                        label: Text(
+                          'Read Less',
+                          style: TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
 
-            // Seller Profile
-            SellerProfileCard(
-              sellerName: widget.item.sellerName,
-              sellerYear: widget.item.sellerYear,
-              rating: 4.8,
-              totalSales: 23,
-              isVerified: true,
-              onChatPressed: () {
-                // TODO: Navigate to chat
-              },
-              onCallPressed: () {
-                // TODO: Make call
-              },
+            // Seller Profile (Always visible)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: SellerProfileCard(
+                sellerName: widget.item.sellerName,
+                sellerYear: widget.item.sellerYear,
+                rating: 4.8,
+                totalSales: 23,
+                isVerified: true,
+                onChatPressed: () {
+                  // TODO: Navigate to chat
+                },
+                onCallPressed: () {
+                  _makePhoneCall();
+                },
+              ),
             ),
 
-            // Similar Items
-            const SimilarItems(),
+            // Similar Items (Always visible)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: SimilarItems(currentItem: widget.item),
+            ),
 
             const SizedBox(height: 100), // Space for bottom buttons
           ],
@@ -279,7 +379,7 @@ class _MarketplaceDetailScreenState extends State<MarketplaceDetailScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    // TODO: Make call
+                    _makePhoneCall();
                   },
                   icon: const Icon(Icons.call_rounded),
                   label: const Text('Call Seller'),
@@ -333,6 +433,46 @@ class _MarketplaceDetailScreenState extends State<MarketplaceDetailScreen> {
         return Colors.orange[600]!;
       default:
         return Colors.grey[600]!;
+    }
+  }
+
+  Future<void> _makePhoneCall() async {
+    final phoneNumber = widget.item.contactPhone;
+
+    if (phoneNumber == null || phoneNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Phone number not available for this seller'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Clean the phone number (remove spaces, dashes, etc.)
+    final cleanPhoneNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+
+    // Ensure the phone number starts with + or add country code if needed
+    final formattedPhoneNumber =
+        cleanPhoneNumber.startsWith('+')
+            ? cleanPhoneNumber
+            : '+256$cleanPhoneNumber'; // Default to Uganda country code
+
+    final Uri phoneUri = Uri(scheme: 'tel', path: formattedPhoneNumber);
+
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        throw Exception('Could not launch phone call');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not make phone call: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 }

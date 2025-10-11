@@ -59,6 +59,8 @@ class _HousingHighlightsState extends State<HousingHighlights> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -70,7 +72,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.blue[50],
+                    color: isDarkMode ? Colors.blue[900] : Colors.blue[50],
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -88,7 +90,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey[900],
+                        color: isDarkMode ? Colors.white : Colors.grey[900],
                       ),
                     ),
                     Text(
@@ -97,7 +99,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                           : '${_roommateRequests.length + _hostelListings.length} new listings',
                       style: TextStyle(
                         fontSize: 10,
-                        color: Colors.grey[600],
+                        color: isDarkMode ? Colors.grey[300] : Colors.grey[600],
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -221,6 +223,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
     BuildContext context,
     Map<String, dynamic> request,
   ) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final nickname = request['nickname'] ?? 'Student';
     final bio = request['bio'] ?? 'Looking for a roommate';
     final budgetMin = (request['budget_min'] as num?)?.toDouble() ?? 0.0;
@@ -254,16 +257,22 @@ class _HousingHighlightsState extends State<HousingHighlights> {
       child: Container(
         width: 280,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? Colors.grey[800] : Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color:
+                  isDarkMode
+                      ? Colors.black.withOpacity(0.3)
+                      : Colors.black.withOpacity(0.12),
               blurRadius: 20,
               offset: const Offset(0, 6),
             ),
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color:
+                  isDarkMode
+                      ? Colors.black.withOpacity(0.2)
+                      : Colors.black.withOpacity(0.06),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -369,7 +378,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                           style: TextStyle(
                             fontSize: 14, // Reduced font size
                             fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
+                            color: isDarkMode ? Colors.white : Colors.grey[800],
                           ),
                         ),
                         const SizedBox(height: 1), // Reduced spacing
@@ -378,7 +387,10 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                             '$yearOfStudy • $campus',
                             style: TextStyle(
                               fontSize: 10, // Reduced font size
-                              color: Colors.grey[600],
+                              color:
+                                  isDarkMode
+                                      ? Colors.grey[300]
+                                      : Colors.grey[600],
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -387,7 +399,10 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                             campus,
                             style: TextStyle(
                               fontSize: 10, // Reduced font size
-                              color: Colors.grey[600],
+                              color:
+                                  isDarkMode
+                                      ? Colors.grey[300]
+                                      : Colors.grey[600],
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -433,7 +448,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                         : bio, // Further reduced bio length
                     style: TextStyle(
                       fontSize: 11, // Slightly smaller font
-                      color: Colors.grey[700],
+                      color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
                       height: 1.3,
                     ),
                     maxLines: 2,
@@ -444,9 +459,13 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                   Container(
                     padding: const EdgeInsets.all(6), // Further reduced padding
                     decoration: BoxDecoration(
-                      color: Colors.grey[50],
+                      color: isDarkMode ? Colors.grey[700] : Colors.grey[50],
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.grey[200]!, width: 1),
+                      border: Border.all(
+                        color:
+                            isDarkMode ? Colors.grey[600]! : Colors.grey[200]!,
+                        width: 1,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -600,6 +619,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
   }
 
   Widget _buildHostelCard(BuildContext context, Map<String, dynamic> hostel) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final name = hostel['name'] ?? 'Hostel';
     final location = hostel['location'] ?? '';
     final pricePerMonth =
@@ -634,16 +654,22 @@ class _HousingHighlightsState extends State<HousingHighlights> {
       child: Container(
         width: 280,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? Colors.grey[800] : Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color:
+                  isDarkMode
+                      ? Colors.black.withOpacity(0.3)
+                      : Colors.black.withOpacity(0.12),
               blurRadius: 20,
               offset: const Offset(0, 6),
             ),
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color:
+                  isDarkMode
+                      ? Colors.black.withOpacity(0.2)
+                      : Colors.black.withOpacity(0.06),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -838,7 +864,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                           style: TextStyle(
                             fontSize: 15, // Slightly smaller
                             fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
+                            color: isDarkMode ? Colors.white : Colors.grey[800],
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -880,7 +906,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                           : description,
                       style: TextStyle(
                         fontSize: 11, // Smaller font
-                        color: Colors.grey[700],
+                        color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
                         height: 1.2,
                       ),
                       maxLines: 1,
@@ -893,9 +919,13 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                   Container(
                     padding: const EdgeInsets.all(8), // Reduced padding
                     decoration: BoxDecoration(
-                      color: Colors.grey[50],
+                      color: isDarkMode ? Colors.grey[700] : Colors.grey[50],
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.grey[200]!, width: 1),
+                      border: Border.all(
+                        color:
+                            isDarkMode ? Colors.grey[600]! : Colors.grey[200]!,
+                        width: 1,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -948,7 +978,11 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                             'Amenities: ${amenities.take(2).join(', ')}${amenities.length > 2 ? '...' : ''}', // Show fewer amenities
                             style: TextStyle(
                               fontSize: 10, // Smaller font
-                              color: Colors.grey[600],
+                              color:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[300]
+                                      : Colors.grey[600],
                               fontWeight: FontWeight.w500,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -976,7 +1010,11 @@ class _HousingHighlightsState extends State<HousingHighlights> {
                                 : contactEmail,
                             style: TextStyle(
                               fontSize: 10, // Smaller font
-                              color: Colors.grey[600],
+                              color:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[300]
+                                      : Colors.grey[600],
                               fontWeight: FontWeight.w500,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -1001,6 +1039,8 @@ class _HousingHighlightsState extends State<HousingHighlights> {
     required String value,
     required Color color,
   }) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Row(
       children: [
         Icon(icon, size: 12, color: color), // Smaller icon
@@ -1010,7 +1050,7 @@ class _HousingHighlightsState extends State<HousingHighlights> {
           style: TextStyle(
             fontSize: 10, // Smaller font
             fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
+            color: isDarkMode ? Colors.grey[300] : Colors.grey[700],
           ),
         ),
         const SizedBox(width: 3), // Reduced spacing

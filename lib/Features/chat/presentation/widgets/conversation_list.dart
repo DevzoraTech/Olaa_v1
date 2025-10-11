@@ -1,9 +1,11 @@
 // Presentation Layer - Conversation List Widget
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/supabase_database_service.dart';
+import '../../../../core/services/supabase_auth_service.dart';
 import '../../domain/models/chat_model.dart';
 
-class ConversationList extends StatelessWidget {
+class ConversationList extends StatefulWidget {
   final String category;
   final String searchQuery;
   final Function(Chat) onChatTap;
@@ -16,28 +18,255 @@ class ConversationList extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final conversations = _getFilteredConversations();
+  State<ConversationList> createState() => _ConversationListState();
+}
 
-    if (conversations.isEmpty) {
+class _ConversationListState extends State<ConversationList> {
+  final SupabaseDatabaseService _databaseService =
+      SupabaseDatabaseService.instance;
+  final SupabaseAuthService _authService = SupabaseAuthService.instance;
+
+  List<Chat> _conversations = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConversations();
+  }
+
+  @override
+  void didUpdateWidget(ConversationList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.category != widget.category ||
+        oldWidget.searchQuery != widget.searchQuery) {
+      _loadConversations();
+    }
+  }
+
+  // Public method to refresh conversations
+  Future<void> refreshConversations() async {
+    await _loadConversations();
+  }
+
+  Future<void> _loadConversations() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      final currentUser = _authService.currentUser;
+      if (currentUser == null) {
+        setState(() {
+          _isLoading = false;
+          _error = 'User not authenticated';
+        });
+        return;
+      }
+
+      print('DEBUG: Loading conversations for user: ${currentUser.id}');
+
+      // Get user's chats
+      final chats = await _databaseService.getUserChats(currentUser.id);
+      print('DEBUG: Found ${chats.length} chats for user ${currentUser.id}');
+      print('DEBUG: Chats data: $chats');
+
+      // Debug each chat
+      for (int i = 0; i < chats.length; i++) {
+        print(
+          'DEBUG: Chat $i: ${chats[i]['id']} - is_group: ${chats[i]['is_group']}',
+        );
+      }
+
+      // Convert to Chat objects with participants
+      final conversations = <Chat>[];
+      for (final chatData in chats) {
+        try {
+          print('DEBUG: Processing chat: ${chatData['id']}');
+
+          // Get participants for this chat
+          final participants = await _databaseService.getChatParticipants(
+            chatData['id'],
+          );
+          print(
+            'DEBUG: Found ${participants.length} participants for chat ${chatData['id']}',
+          );
+          print('DEBUG: Participants data: $participants');
+
+          final chatParticipants =
+              participants.map((p) {
+                print('DEBUG: Raw participant data: $p');
+                print('DEBUG: Profile data: ${p['profile']}');
+                final participant = ChatParticipant.fromMap(p, p['profile']);
+                print(
+                  'DEBUG: Created participant: ${participant.userId} - ${participant.name}',
+                );
+                return participant;
+              }).toList();
+
+          // Get the other participant (not current user) for display name
+          print(
+            'DEBUG: Looking for participant that is NOT: ${currentUser.id}',
+          );
+          final otherParticipant = chatParticipants.firstWhere(
+            (p) {
+              final isNotCurrentUser = p.userId != currentUser.id;
+              print(
+                'DEBUG: Participant ${p.userId} (${p.userId.runtimeType}) != ${currentUser.id} (${currentUser.id.runtimeType})? $isNotCurrentUser',
+              );
+              print(
+                'DEBUG: String comparison: "${p.userId}" != "${currentUser.id}"? ${p.userId != currentUser.id}',
+              );
+              return isNotCurrentUser;
+            },
+            orElse:
+                () =>
+                    chatParticipants.isNotEmpty
+                        ? chatParticipants.first
+                        : ChatParticipant(
+                          id: '',
+                          chatId: chatData['id'] ?? '',
+                          userId: 'unknown',
+                          name: 'Unknown User',
+                          isOnline: false,
+                          lastSeen: DateTime.now(),
+                          joinedAt: DateTime.now(),
+                        ),
+          );
+
+          print('DEBUG: Current user: ${currentUser.id}');
+          print(
+            'DEBUG: Chat participants: ${chatParticipants.map((p) => '${p.userId}: ${p.name}').join(', ')}',
+          );
+          print(
+            'DEBUG: Other participant: ${otherParticipant.userId}: ${otherParticipant.name}',
+          );
+
+          // Create Chat object with proper name
+          print('DEBUG: Creating chat with name: ${otherParticipant.name}');
+          final chat = Chat(
+            id: chatData['id'] ?? '',
+            isGroup: chatData['is_group'] ?? false,
+            groupName:
+                chatData['is_group'] == true
+                    ? chatData['group_name']
+                    : otherParticipant.name,
+            groupDescription: chatData['group_description'],
+            groupImageUrl:
+                chatData['is_group'] == true
+                    ? chatData['group_image_url']
+                    : otherParticipant.profileImageUrl,
+            createdAt: DateTime.parse(
+              chatData['created_at'] ?? DateTime.now().toIso8601String(),
+            ),
+            updatedAt: DateTime.parse(
+              chatData['updated_at'] ?? DateTime.now().toIso8601String(),
+            ),
+            lastMessageAt: DateTime.parse(
+              chatData['last_message_at'] ?? DateTime.now().toIso8601String(),
+            ),
+            lastMessage: chatData['last_message'],
+            lastMessageSenderId: chatData['last_message_sender_id'],
+            unreadCount: chatData['unread_count'] ?? 0,
+            participants: chatParticipants,
+          );
+
+          // Check if chat has actual messages
+          final hasMessages = await _chatHasMessages(chatData['id']);
+
+          if (hasMessages) {
+            conversations.add(chat);
+            print('DEBUG: Successfully created chat: ${chat.name}');
+          } else {
+            print('DEBUG: Skipping empty chat: ${chat.name}');
+          }
+        } catch (e) {
+          print('Error processing chat ${chatData['id']}: $e');
+        }
+      }
+
+      print('DEBUG: Created ${conversations.length} conversation objects');
+
+      setState(() {
+        _conversations = conversations;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading conversations: $e');
+      setState(() {
+        _isLoading = false;
+        _error = 'Failed to load conversations';
+      });
+    }
+  }
+
+  // Helper method to check if a chat has messages
+  Future<bool> _chatHasMessages(String chatId) async {
+    try {
+      final messages = await _databaseService.getChatMessages(
+        chatId: chatId,
+        limit: 1, // We only need to check if at least one message exists
+      );
+      return messages.isNotEmpty;
+    } catch (e) {
+      print('Error checking messages for chat $chatId: $e');
+      return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadConversations,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final filteredConversations = _getFilteredConversations();
+
+    if (filteredConversations.isEmpty) {
       return _buildEmptyState();
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: conversations.length,
-      itemBuilder: (context, index) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: _buildConversationCard(conversations[index]),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _loadConversations,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: filteredConversations.length,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: _buildConversationCard(filteredConversations[index]),
+          );
+        },
+      ),
     );
   }
 
   Widget _buildConversationCard(Chat chat) {
     return GestureDetector(
-      onTap: () => onChatTap(chat),
+      onTap: () => widget.onChatTap(chat),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -57,7 +286,25 @@ class ConversationList extends StatelessWidget {
                     color: chat.color.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(chat.icon, color: chat.color, size: 24),
+                  child:
+                      chat.groupImageUrl != null &&
+                              chat.groupImageUrl!.isNotEmpty
+                          ? ClipOval(
+                            child: Image.network(
+                              chat.groupImageUrl!,
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(
+                                  chat.icon,
+                                  color: chat.color,
+                                  size: 24,
+                                );
+                              },
+                            ),
+                          )
+                          : Icon(chat.icon, color: chat.color, size: 24),
                 ),
                 if (chat.isOnline)
                   Positioned(
@@ -105,7 +352,7 @@ class ConversationList extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          chat.lastMessage,
+                          chat.lastMessage ?? 'No messages yet',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey[600],
@@ -221,30 +468,36 @@ class ConversationList extends StatelessWidget {
   }
 
   List<Chat> _getFilteredConversations() {
-    final allConversations = _getMockConversations();
-
-    List<Chat> filtered = allConversations;
+    List<Chat> filtered = _conversations;
 
     // Filter by category
-    if (category != 'All') {
-      filtered = filtered.where((chat) => chat.category == category).toList();
+    if (widget.category != 'All') {
+      filtered =
+          filtered.where((chat) => chat.category == widget.category).toList();
     }
 
     // Filter by search query
-    if (searchQuery.isNotEmpty) {
+    if (widget.searchQuery.isNotEmpty) {
       filtered =
           filtered
               .where(
                 (chat) =>
                     chat.name.toLowerCase().contains(
-                      searchQuery.toLowerCase(),
+                      widget.searchQuery.toLowerCase(),
                     ) ||
-                    chat.lastMessage.toLowerCase().contains(
-                      searchQuery.toLowerCase(),
+                    (chat.lastMessage ?? '').toLowerCase().contains(
+                      widget.searchQuery.toLowerCase(),
                     ),
               )
               .toList();
     }
+
+    // Sort by last message time (most recent first)
+    filtered.sort(
+      (a, b) => (b.lastMessageAt ?? DateTime.now()).compareTo(
+        a.lastMessageAt ?? DateTime.now(),
+      ),
+    );
 
     return filtered;
   }
@@ -260,76 +513,5 @@ class ConversationList extends StatelessWidget {
       default:
         return Colors.grey[600]!;
     }
-  }
-
-  List<Chat> _getMockConversations() {
-    return [
-      Chat(
-        id: '1',
-        name: 'Alex Johnson',
-        lastMessage: 'Hey! Are you still looking for a roommate?',
-        lastMessageTime: '2m',
-        unreadCount: 2,
-        isOnline: true,
-        category: 'Personal',
-        icon: Icons.person,
-        color: Colors.blue[600]!,
-      ),
-      Chat(
-        id: '2',
-        name: 'Sunset Hostel',
-        lastMessage: 'We have availability for next semester. Call us!',
-        lastMessageTime: '1h',
-        unreadCount: 1,
-        isOnline: false,
-        category: 'Hostels',
-        icon: Icons.home,
-        color: Colors.green[600]!,
-      ),
-      Chat(
-        id: '3',
-        name: 'Tech Society',
-        lastMessage: 'Sarah: The coding workshop is tomorrow at 3 PM',
-        lastMessageTime: '3h',
-        unreadCount: 0,
-        isOnline: false,
-        category: 'Groups',
-        icon: Icons.group,
-        color: Colors.purple[600]!,
-      ),
-      Chat(
-        id: '4',
-        name: 'Sarah Kim',
-        lastMessage: 'Thanks for the study notes! 📚',
-        lastMessageTime: '5h',
-        unreadCount: 0,
-        isOnline: true,
-        category: 'Personal',
-        icon: Icons.person,
-        color: Colors.pink[600]!,
-      ),
-      Chat(
-        id: '5',
-        name: 'Campus View Hostel',
-        lastMessage: 'Your room is ready. Check-in starts Monday.',
-        lastMessageTime: '1d',
-        unreadCount: 0,
-        isOnline: false,
-        category: 'Hostels',
-        icon: Icons.home,
-        color: Colors.teal[600]!,
-      ),
-      Chat(
-        id: '6',
-        name: 'Study Group CS101',
-        lastMessage: 'Mike: Can we meet at the library tomorrow?',
-        lastMessageTime: '2d',
-        unreadCount: 3,
-        isOnline: false,
-        category: 'Groups',
-        icon: Icons.group,
-        color: Colors.orange[600]!,
-      ),
-    ];
   }
 }

@@ -1,7 +1,7 @@
 // Core Services - Verification Service
 import 'dart:io';
 import '../config/supabase_config.dart';
-import '../../features/verification/domain/models/verification_models.dart';
+import 'package:pulse_campus/Features/verification/domain/models/verification_models.dart';
 
 class VerificationService {
   static final VerificationService _instance = VerificationService._internal();

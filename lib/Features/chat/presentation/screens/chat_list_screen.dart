@@ -16,6 +16,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
   String _selectedCategory = 'All';
   String _searchQuery = '';
 
+  void _refreshConversations() {
+    // Trigger a rebuild to refresh conversations
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,7 +56,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       body: Column(
         children: [
           // Chat Header with Quick Actions
-          const ChatHeader(),
+          ChatHeader(onChatCreated: _refreshConversations),
 
           // Category Tabs
           ChatCategoryTabs(
@@ -72,7 +77,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => ChatDetailScreen(chat: chat),
+                    builder:
+                        (context) => ChatDetailScreen(
+                          chat: chat,
+                          onChatUpdated: _refreshConversations,
+                        ),
                   ),
                 );
               },

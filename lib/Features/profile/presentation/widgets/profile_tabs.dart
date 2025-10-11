@@ -366,7 +366,7 @@ class _ProfileTabsState extends State<ProfileTabs> {
         if (snapshot.hasError) {
           return Center(
             child: Column(
-      children: [
+              children: [
                 Icon(Icons.error_outline, color: Colors.red[400], size: 48),
                 const SizedBox(height: 8),
                 Text(
@@ -397,8 +397,8 @@ class _ProfileTabsState extends State<ProfileTabs> {
                   Icons.shopping_cart_outlined,
                   color: Colors.grey[400],
                   size: 48,
-        ),
-        const SizedBox(height: 12),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'No marketplace listings yet',
                   style: TextStyle(
@@ -560,6 +560,8 @@ class _ProfileTabsState extends State<ProfileTabs> {
       images: images,
       condition: data['condition'] ?? 'Good',
       location: 'Campus', // Default location, could be added to database later
+      contactPhone: data['contact_phone'] ?? profile['phone_number'],
+      contactEmail: data['contact_email'] ?? profile['email'],
     );
   }
 
@@ -704,9 +706,9 @@ class _ProfileTabsState extends State<ProfileTabs> {
                         ? Colors.green[600]!
                         : Colors.orange[600]!;
 
-    return Column(
-      children: [
-        _buildContentItem(
+                return Column(
+                  children: [
+                    _buildContentItem(
                       title:
                           listing['name'] ??
                           listing['title'] ??
@@ -714,10 +716,10 @@ class _ProfileTabsState extends State<ProfileTabs> {
                       subtitle: _buildHostelSubtitle(listing),
                       status: status == 'active' ? 'Available' : 'Unavailable',
                       statusColor: statusColor,
-          icon: Icons.home_outlined,
+                      icon: Icons.home_outlined,
                       onTap: () => _navigateToHostelDetail(context, listing),
-        ),
-        const SizedBox(height: 12),
+                    ),
+                    const SizedBox(height: 12),
                   ],
                 );
               }).toList(),
@@ -809,28 +811,28 @@ class _ProfileTabsState extends State<ProfileTabs> {
         final address = profile['address'] ?? '';
         final officeLocation = profile['office_location'] ?? '';
 
-    return Column(
-      children: [
+        return Column(
+          children: [
             // Phone
             if (phone.isNotEmpty) ...[
-        _buildContactItem(
-          icon: Icons.phone_outlined,
-          label: 'Phone',
+              _buildContactItem(
+                icon: Icons.phone_outlined,
+                label: 'Phone',
                 value: phone,
-          action: 'Call',
-        ),
-        const SizedBox(height: 12),
+                action: 'Call',
+              ),
+              const SizedBox(height: 12),
             ],
 
             // Email
             if (email.isNotEmpty) ...[
-        _buildContactItem(
-          icon: Icons.email_outlined,
-          label: 'Email',
+              _buildContactItem(
+                icon: Icons.email_outlined,
+                label: 'Email',
                 value: email,
-          action: 'Email',
-        ),
-        const SizedBox(height: 12),
+                action: 'Email',
+              ),
+              const SizedBox(height: 12),
             ],
 
             // Website
@@ -846,12 +848,12 @@ class _ProfileTabsState extends State<ProfileTabs> {
 
             // Office Location
             if (officeLocation.isNotEmpty) ...[
-        _buildContactItem(
-          icon: Icons.location_on_outlined,
-          label: 'Office',
+              _buildContactItem(
+                icon: Icons.location_on_outlined,
+                label: 'Office',
                 value: officeLocation,
-          action: 'Directions',
-        ),
+                action: 'Directions',
+              ),
               const SizedBox(height: 12),
             ] else if (address.isNotEmpty) ...[
               _buildContactItem(

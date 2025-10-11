@@ -113,30 +113,30 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Scaffold(
         backgroundColor:
             _isDarkMode ? const Color(0xFF0B1014) : Colors.grey[50],
-      body: SafeArea(
+        body: SafeArea(
           child: Stack(
             children: [
               Column(
-          children: [
-            // Header with search and notifications (only show on home screen)
-            if (_currentIndex == 0) const HomeHeader(),
+                children: [
+                  // Header with search and notifications (only show on home screen)
+                  if (_currentIndex == 0) const HomeHeader(),
 
-            // Main content based on selected tab
-            Expanded(child: _buildCurrentScreen()),
+                  // Main content based on selected tab
+                  Expanded(child: _buildCurrentScreen()),
                 ],
               ),
               // Management FAB positioned in top-right
               const ManagementFAB(),
-          ],
+            ],
+          ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigation(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        bottomNavigationBar: BottomNavigation(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
         ),
       ),
     );
@@ -294,9 +294,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     AppTheme.primaryColor.withOpacity(0.08),
                   ]
                   : [
-            AppTheme.primaryColor.withOpacity(0.08),
-            AppTheme.primaryColor.withOpacity(0.03),
-          ],
+                    AppTheme.primaryColor.withOpacity(0.08),
+                    AppTheme.primaryColor.withOpacity(0.03),
+                  ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -349,18 +349,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: _toggleTheme,
                     child: Container(
                       padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
+                      decoration: BoxDecoration(
                         color: _isDarkMode ? Colors.grey[800] : Colors.white,
                         borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withOpacity(0.1),
                             blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
                         _isDarkMode ? Icons.light_mode : Icons.dark_mode,
                         color:
                             _isDarkMode ? Colors.amber[600] : Colors.grey[700],
