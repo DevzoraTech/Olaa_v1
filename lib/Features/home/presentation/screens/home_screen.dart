@@ -7,7 +7,7 @@ import '../widgets/home_header.dart';
 import '../widgets/quick_actions.dart';
 import '../widgets/housing_highlights.dart';
 import '../widgets/campus_feed.dart';
-import '../widgets/marketplace_highlights.dart';
+import '../widgets/marketplace_highlights.dart' as marketplace;
 import '../widgets/trending_carousel.dart';
 import '../widgets/bottom_navigation.dart';
 import '../../../../Features/management/presentation/widgets/management_fab.dart';
@@ -193,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 28),
 
             // Marketplace Highlights
-            const MarketplaceHighlights(),
+            const marketplace.MarketplaceHighlights(),
             const SizedBox(height: 16),
           ],
         ),

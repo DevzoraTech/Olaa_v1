@@ -40,3 +40,4 @@ SELECT
   MIN(created_at) as oldest_message,
   MAX(created_at) as newest_message
 FROM messages;
+

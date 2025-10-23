@@ -599,27 +599,49 @@ class SupabaseDatabaseService {
 
   // Get user's chats
   Future<List<Map<String, dynamic>>> getUserChats(String userId) async {
+    print('DEBUG: getUserChats called for user: $userId');
+
     try {
       // First try the database function
       try {
+        print('DEBUG: Attempting to call get_user_chats RPC function');
         final response = await SupabaseConfig.client.rpc(
           'get_user_chats',
           params: {'user_uuid': userId},
         );
+        print(
+          'DEBUG: RPC function succeeded, got ${(response as List).length} chats',
+        );
         return List<Map<String, dynamic>>.from(response);
       } catch (e) {
-        print('Database function failed, trying direct query: $e');
+        print('⚠️ WARNING: Database function get_user_chats failed: $e');
+        print(
+          '⚠️ This is expected if you haven\'t run MIGRATION_03_ADD_GET_USER_CHATS_FUNCTION.sql',
+        );
+        print('DEBUG: Falling back to direct query');
 
         // Fallback to direct query without joins
+        final chatIds = await _getUserChatIds(userId);
+        print('DEBUG: Found ${chatIds.length} chat IDs for user');
+
+        if (chatIds.isEmpty) {
+          print('DEBUG: No chat IDs found, returning empty list');
+          return [];
+        }
+
         final response = await SupabaseConfig.from('chats')
             .select('*')
-            .inFilter('id', await _getUserChatIds(userId))
+            .inFilter('id', chatIds)
             .order('updated_at', ascending: false);
 
+        print(
+          'DEBUG: Direct query succeeded, got ${(response as List).length} chats',
+        );
         return List<Map<String, dynamic>>.from(response);
       }
     } catch (e) {
-      print('Error getting user chats: ${e.toString()}');
+      print('❌ ERROR: Failed to get user chats: ${e.toString()}');
+      print('ERROR Stack trace: ${StackTrace.current}');
       return [];
     }
   }
@@ -748,6 +770,14 @@ class SupabaseDatabaseService {
             'messages',
           ).insert(insertData).select().single();
 
+      // Update the chat's last message information
+      await _updateChatLastMessage(
+        chatId: chatId,
+        senderId: senderId,
+        message: content,
+        messageType: type,
+      );
+
       return response;
     } catch (e) {
       print('Error sending message: ${e.toString()}');
@@ -755,30 +785,84 @@ class SupabaseDatabaseService {
     }
   }
 
-  // Get chat messages
-  Future<List<Map<String, dynamic>>> getChatMessages({
+  // Helper method to update chat's last message
+  Future<void> _updateChatLastMessage({
     required String chatId,
-    int? limit,
-    int? offset,
+    required String senderId,
+    required String message,
+    required String messageType,
   }) async {
     try {
-      // Get messages without joins to avoid schema cache issues
+      print('DEBUG: Updating chat last message for chat: $chatId');
+
+      // Create a display message based on message type
+      String displayMessage = message;
+      if (messageType == 'image') {
+        displayMessage = '📷 Image';
+      } else if (messageType == 'video') {
+        displayMessage = '🎥 Video';
+      } else if (messageType == 'voice') {
+        displayMessage = '🎤 Voice message';
+      } else if (messageType == 'file') {
+        displayMessage = '📄 File';
+      } else if (messageType == 'location') {
+        displayMessage = '📍 Location';
+      }
+
+      await SupabaseConfig.from('chats')
+          .update({
+            'last_message': displayMessage,
+            'last_message_sender_id': senderId,
+            'last_message_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', chatId);
+
+      print('DEBUG: Chat last message updated successfully');
+    } catch (e) {
+      print('ERROR: Failed to update chat last message: $e');
+    }
+  }
+
+  // Get chat messages
+  /// Get chat messages with pagination support
+  ///
+  /// [chatId] - The chat ID to fetch messages for
+  /// [limit] - Number of messages to fetch (default: 30)
+  /// [beforeTimestamp] - Load messages before this timestamp (for loading older messages)
+  ///
+  /// Returns messages in DESCENDING order (newest first) for chat display
+  Future<List<Map<String, dynamic>>> getChatMessages({
+    required String chatId,
+    int limit = 30,
+    String? beforeTimestamp,
+  }) async {
+    try {
+      // Start with base query - order by created_at DESC (newest first)
       dynamic query = SupabaseConfig.from(
         'messages',
-      ).select('*').eq('chat_id', chatId).order('created_at', ascending: true);
+      ).select('*').eq('chat_id', chatId).order('created_at', ascending: false);
 
-      if (limit != null) {
-        query = query.limit(limit);
+      // If loading older messages, filter to messages before the given timestamp
+      if (beforeTimestamp != null) {
+        query = query.lt('created_at', beforeTimestamp);
       }
 
-      if (offset != null) {
-        query = query.range(offset, offset + (limit ?? 50) - 1);
-      }
+      // Apply limit
+      query = query.limit(limit);
 
       final response = await query;
+
+      print(
+        'DEBUG: Loaded ${(response as List).length} messages for chat $chatId',
+      );
+      if (beforeTimestamp != null) {
+        print('DEBUG: Loading messages before $beforeTimestamp');
+      }
+
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('Error getting chat messages: ${e.toString()}');
+      print('ERROR: Failed to get chat messages: ${e.toString()}');
       return [];
     }
   }

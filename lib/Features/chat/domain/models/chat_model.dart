@@ -1,5 +1,6 @@
 // Domain Layer - Chat Model
 import 'package:flutter/material.dart';
+import 'package:pulse_campus/core/utils/date_time_utils.dart';
 
 class Chat {
   final String id;
@@ -36,34 +37,81 @@ class Chat {
       return groupName ?? 'Group Chat';
     } else {
       // For 1-on-1 chats, return the other participant's name
+      // We need to find the participant that is NOT the current user
       if (participants.length >= 2) {
-        // Assuming the first participant is the current user
-        return participants[1].name;
+        // For now, return the groupName which should be set to the other participant's name
+        // This is more reliable than assuming participant order
+        return groupName ?? 'Unknown User';
       }
       return 'Unknown User';
     }
   }
 
+  // Helper method to get the other participant's name (for 1-on-1 chats)
+  String getOtherParticipantName(String currentUserId) {
+    if (isGroup) {
+      return groupName ?? 'Group Chat';
+    } else {
+      // Find the participant that is NOT the current user
+      final otherParticipant = participants.firstWhere(
+        (p) => p.userId != currentUserId,
+        orElse:
+            () =>
+                participants.isNotEmpty
+                    ? participants.first
+                    : ChatParticipant(
+                      id: '',
+                      chatId: '',
+                      userId: 'unknown',
+                      name: 'Unknown User',
+                      isOnline: false,
+                      lastSeen: DateTime.now(),
+                      joinedAt: DateTime.now(),
+                    ),
+      );
+      return otherParticipant.name;
+    }
+  }
+
+  // Helper method to check if the other participant is online
+  bool isOtherParticipantOnline(String currentUserId) {
+    if (isGroup) return false; // Groups don't have online status
+    if (participants.length >= 2) {
+      // Find the other participant (not current user) and check their online status
+      final otherParticipant = participants.firstWhere(
+        (p) => p.userId != currentUserId,
+        orElse:
+            () =>
+                participants.isNotEmpty
+                    ? participants.first
+                    : ChatParticipant(
+                      id: '',
+                      chatId: '',
+                      userId: 'unknown',
+                      name: 'Unknown User',
+                      isOnline: false,
+                      lastSeen: DateTime.now(),
+                      joinedAt: DateTime.now(),
+                    ),
+      );
+      return otherParticipant.isOnline;
+    }
+    return false;
+  }
+
   String get lastMessageTime {
     if (lastMessageAt == null) return '';
-    final now = DateTime.now();
-    final difference = now.difference(lastMessageAt!);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
+    // Use the DateTimeUtils for consistent formatting
+    return DateTimeUtils.formatChatListTime(lastMessageAt!);
   }
 
   bool get isOnline {
     if (isGroup) return false; // Groups don't have online status
     if (participants.length >= 2) {
-      return participants[1].isOnline;
+      // Find the other participant (not current user) and check their online status
+      // For now, we'll use a simple approach - check if any participant is online
+      // In a real implementation, you'd need to know which participant is the current user
+      return participants.any((p) => p.isOnline);
     }
     return false;
   }
@@ -90,15 +138,15 @@ class Chat {
       groupName: data['group_name'],
       groupDescription: data['group_description'],
       groupImageUrl: data['group_image_url'],
-      createdAt: DateTime.parse(
+      createdAt: DateTimeUtils.parseSupabaseTimestamp(
         data['created_at'] ?? DateTime.now().toIso8601String(),
       ),
-      updatedAt: DateTime.parse(
+      updatedAt: DateTimeUtils.parseSupabaseTimestamp(
         data['updated_at'] ?? DateTime.now().toIso8601String(),
       ),
       lastMessageAt:
           data['last_message_at'] != null
-              ? DateTime.parse(data['last_message_at'])
+              ? DateTimeUtils.parseSupabaseTimestamp(data['last_message_at'])
               : null,
       lastMessage: data['last_message'],
       lastMessageSenderId: data['last_message_sender_id'],
@@ -192,8 +240,10 @@ class Message {
       replyToMessageId: data['reply_to_message_id'],
       isEdited: data['is_edited'] ?? false,
       editedAt:
-          data['edited_at'] != null ? DateTime.parse(data['edited_at']) : null,
-      createdAt: DateTime.parse(
+          data['edited_at'] != null
+              ? DateTimeUtils.parseSupabaseTimestamp(data['edited_at'])
+              : null,
+      createdAt: DateTimeUtils.parseSupabaseTimestamp(
         data['created_at'] ?? DateTime.now().toIso8601String(),
       ),
     );
@@ -265,7 +315,7 @@ class Message {
   }
 }
 
-enum MessageType { text, image, file, voice, link }
+enum MessageType { text, image, file, video, voice, link, location }
 
 class ChatParticipant {
   final String id;

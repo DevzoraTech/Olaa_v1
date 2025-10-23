@@ -1,26 +1,93 @@
--- EMERGENCY RLS FIX - Disable RLS temporarily to test
--- Run this in your Supabase SQL Editor
+-- ============================================================================
+-- EMERGENCY FIX: Complete RLS Reset
+-- ============================================================================
+-- This will completely disable and recreate RLS policies to fix infinite recursion
+-- ============================================================================
 
--- 1. Check current RLS status
-SELECT schemaname, tablename, rowsecurity 
-FROM pg_tables 
-WHERE tablename = 'profiles';
+-- Step 1: Completely disable RLS on both tables
+ALTER TABLE chat_participants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE messages DISABLE ROW LEVEL SECURITY;
 
--- 2. Temporarily disable RLS to test if that's the issue
-ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+-- Step 2: Drop ALL policies (this will work even if they don't exist)
+DO $$ 
+DECLARE
+    policy_record RECORD;
+BEGIN
+    -- Drop all policies on chat_participants
+    FOR policy_record IN 
+        SELECT policyname FROM pg_policies WHERE tablename = 'chat_participants'
+    LOOP
+        EXECUTE 'DROP POLICY IF EXISTS "' || policy_record.policyname || '" ON chat_participants';
+    END LOOP;
+    
+    -- Drop all policies on messages
+    FOR policy_record IN 
+        SELECT policyname FROM pg_policies WHERE tablename = 'messages'
+    LOOP
+        EXECUTE 'DROP POLICY IF EXISTS "' || policy_record.policyname || '" ON messages';
+    END LOOP;
+END $$;
 
--- 3. Test if updates work now (run this after disabling RLS)
--- UPDATE profiles SET business_name = 'TEST UPDATE' WHERE email = 'devzoratech@gmail.com';
+-- Step 3: Re-enable RLS
+ALTER TABLE chat_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
--- 4. Check if the update worked
--- SELECT business_name FROM profiles WHERE email = 'devzoratech@gmail.com';
+-- Step 4: Create simple, non-recursive policies using functions
+-- First create helper functions to avoid recursion
 
--- 5. If updates work, re-enable RLS with proper policies
--- ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- Function to get user's chat IDs
+CREATE OR REPLACE FUNCTION get_user_chat_ids(user_uuid UUID)
+RETURNS TABLE(chat_id UUID) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT DISTINCT cp.chat_id
+    FROM chat_participants cp
+    WHERE cp.user_id = user_uuid;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 6. Create a simple policy that definitely works
--- CREATE POLICY "Allow all authenticated users" ON profiles
---     FOR ALL USING (auth.role() = 'authenticated')
---     WITH CHECK (auth.role() = 'authenticated');
+-- Step 5: Create policies using the helper function
+CREATE POLICY "chat_participants_select" ON chat_participants
+    FOR SELECT USING (chat_id = ANY(SELECT get_user_chat_ids(auth.uid())));
 
-SELECT 'RLS temporarily disabled - test your app now!' as status;
+CREATE POLICY "chat_participants_insert" ON chat_participants
+    FOR INSERT WITH CHECK (
+        user_id = auth.uid() OR 
+        chat_id = ANY(SELECT get_user_chat_ids(auth.uid()))
+    );
+
+CREATE POLICY "chat_participants_update" ON chat_participants
+    FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "chat_participants_delete" ON chat_participants
+    FOR DELETE USING (user_id = auth.uid());
+
+CREATE POLICY "messages_select" ON messages
+    FOR SELECT USING (chat_id = ANY(SELECT get_user_chat_ids(auth.uid())));
+
+CREATE POLICY "messages_insert" ON messages
+    FOR INSERT WITH CHECK (
+        sender_id = auth.uid() AND 
+        chat_id = ANY(SELECT get_user_chat_ids(auth.uid()))
+    );
+
+CREATE POLICY "messages_update" ON messages
+    FOR UPDATE USING (
+        sender_id = auth.uid() OR 
+        chat_id = ANY(SELECT get_user_chat_ids(auth.uid()))
+    );
+
+CREATE POLICY "messages_delete" ON messages
+    FOR DELETE USING (sender_id = auth.uid());
+
+-- Step 6: Grant necessary permissions
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT ALL ON chat_participants TO authenticated;
+GRANT ALL ON messages TO authenticated;
+GRANT EXECUTE ON FUNCTION get_user_chat_ids(UUID) TO authenticated;
+
+-- Step 7: Verify the fix
+SELECT 'RLS Policies Fixed Successfully!' as status;
+SELECT tablename, policyname, cmd FROM pg_policies 
+WHERE tablename IN ('chat_participants', 'messages')
+ORDER BY tablename, policyname;

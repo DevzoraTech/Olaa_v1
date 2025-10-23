@@ -5,15 +5,21 @@ import 'dart:ui';
 import 'dart:io';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/local_file_storage_service.dart';
-import '../../domain/models/chat_model.dart';
+import 'package:pulse_campus/Features/chat/domain/models/chat_model.dart';
 import 'media_display_widget.dart';
+import 'voice_message_playback.dart';
+import 'audio_file_playback.dart';
+import '../screens/document_viewer_screen.dart';
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends StatefulWidget {
   final Message message;
   final bool isMe;
   final bool showAvatar;
   final String chatType;
   final Function(Message)? onDownloadStateChanged;
+  // Universal media viewer support
+  final List<Message>? allMediaMessages;
+  final int? currentMediaIndex;
 
   const MessageBubble({
     super.key,
@@ -22,134 +28,151 @@ class MessageBubble extends StatelessWidget {
     required this.showAvatar,
     required this.chatType,
     this.onDownloadStateChanged,
+    this.allMediaMessages,
+    this.currentMediaIndex,
   });
+
+  @override
+  State<MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<MessageBubble> {
+  @override
+  void initState() {
+    super.initState();
+    _checkForExistingDownload();
+  }
+
+  Future<void> _checkForExistingDownload() async {
+    // Only check for files that have a fileUrl but are not yet downloaded
+    if (widget.message.fileUrl != null &&
+        !widget.message.isDownloaded &&
+        widget.message.localFilePath == null) {
+      try {
+        final localStorage = LocalFileStorageService();
+        await localStorage.initialize();
+
+        final existingFilePath = await localStorage.getLocalFilePathForMessage(
+          chatId: widget.message.chatId,
+          messageId: widget.message.id,
+          fileName: widget.message.fileName ?? 'file',
+        );
+
+        if (existingFilePath != null && await File(existingFilePath).exists()) {
+          print('DEBUG: Found existing downloaded file: $existingFilePath');
+
+          // Update download state to downloaded with existing local path
+          if (widget.onDownloadStateChanged != null) {
+            final updatedMessage = widget.message.copyWith(
+              isDownloaded: true,
+              isDownloading: false,
+              downloadProgress: 1.0,
+              localFilePath: existingFilePath,
+            );
+            widget.onDownloadStateChanged!(updatedMessage);
+          }
+        }
+      } catch (e) {
+        print('ERROR: Failed to check for existing download: $e');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment:
+          widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (!isMe && showAvatar) ...[
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              shape: BoxShape.circle,
-            ),
-            child: ClipOval(
-              child:
-                  message.senderProfileImageUrl != null &&
-                          message.senderProfileImageUrl!.isNotEmpty
-                      ? Image.network(
-                        message.senderProfileImageUrl!,
-                        width: 28,
-                        height: 28,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.person,
-                            size: 16,
-                            color: Colors.grey[600],
-                          );
-                        },
-                      )
-                      : Icon(Icons.person, size: 16, color: Colors.grey[600]),
-            ),
+        Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
           ),
-          const SizedBox(width: 8),
-        ] else if (!isMe)
-          const SizedBox(width: 36),
-
-        Flexible(
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
-            ),
-            child: Column(
-              crossAxisAlignment:
-                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                // Message Content
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+          child: Column(
+            crossAxisAlignment:
+                widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              // Message Content
+              Container(
+                padding: _getMessagePadding(),
+                decoration: BoxDecoration(
+                  color: widget.isMe ? Colors.blue : Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(widget.isMe ? 16 : 4),
+                    bottomRight: Radius.circular(widget.isMe ? 4 : 16),
                   ),
-                  decoration: BoxDecoration(
-                    color: isMe ? AppTheme.primaryColor : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(isMe ? 16 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                  border:
+                      _shouldShowBorder()
+                          ? Border.all(
+                            color:
+                                widget.isMe ? Colors.blue : Colors.grey[200]!,
+                            width: 1,
+                          )
+                          : null,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
-                    border: Border.all(
-                      color: isMe ? AppTheme.primaryColor : Colors.grey[200]!,
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Sender name (for group chats)
-                      if (!isMe && chatType == 'Groups')
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            message.senderName,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ),
-
-                      // Message content
-                      _buildMessageContent(),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                // Time and status
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _formatTime(message.createdAt),
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                    ),
-                    if (isMe) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        message.isRead
-                            ? Icons.done_all_rounded
-                            : message.isDelivered
-                            ? Icons.done_all_rounded
-                            : Icons.done_rounded,
-                        size: 14,
-                        color: message.isRead ? Colors.blue : Colors.grey[400],
-                      ),
-                    ],
                   ],
                 ),
-              ],
-            ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Sender name (for group chats)
+                    if (!widget.isMe && widget.chatType == 'Groups')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          widget.message.senderName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+
+                    // Message content
+                    _buildMessageContent(),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 4),
+
+              // Time and status
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(widget.message.createdAt),
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                  if (widget.isMe) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      widget.message.isRead
+                          ? Icons.done_all_rounded
+                          : widget.message.isDelivered
+                          ? Icons.done_all_rounded
+                          : Icons.done_rounded,
+                      size: 14,
+                      color:
+                          widget.message.isRead
+                              ? Colors.blue
+                              : Colors.grey[400],
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ),
         ),
-
-        if (isMe) const SizedBox(width: 36),
       ],
     );
   }
@@ -205,59 +228,193 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent() {
-    switch (message.type) {
+    switch (widget.message.type) {
       case MessageType.text:
         return Text(
-          message.content,
+          widget.message.content,
           style: TextStyle(
             fontSize: 14,
-            color: isMe ? Colors.white : Colors.grey[800],
+            color: widget.isMe ? Colors.white : Colors.grey[800],
             height: 1.3,
           ),
         );
 
       case MessageType.image:
         return MediaDisplayWidget(
-          fileUrl: message.fileUrl,
-          localFilePath: message.localFilePath,
-          fileName: message.fileName,
-          isMe: isMe,
-          content: message.content,
-          isDownloaded: message.isDownloaded,
-          isDownloading: message.isDownloading,
-          downloadProgress: message.downloadProgress,
-          onDownloadPressed: () => _downloadFile(message.fileUrl ?? ''),
+          fileUrl: widget.message.fileUrl,
+          localFilePath: widget.message.localFilePath,
+          fileName: widget.message.fileName,
+          fileSize: widget.message.fileSize,
+          isMe: widget.isMe,
+          content: widget.message.content,
+          isDownloaded: widget.message.isDownloaded,
+          isDownloading: widget.message.isDownloading,
+          downloadProgress: widget.message.downloadProgress,
+          onDownloadPressed: () => _downloadFile(widget.message.fileUrl ?? ''),
+          allMediaMessages: widget.allMediaMessages,
+          currentMediaIndex: widget.currentMediaIndex,
+        );
+
+      case MessageType.video:
+        return MediaDisplayWidget(
+          fileUrl: widget.message.fileUrl,
+          localFilePath: widget.message.localFilePath,
+          fileName: widget.message.fileName,
+          fileSize: widget.message.fileSize,
+          isMe: widget.isMe,
+          content: widget.message.content,
+          isDownloaded: widget.message.isDownloaded,
+          isDownloading: widget.message.isDownloading,
+          downloadProgress: widget.message.downloadProgress,
+          onDownloadPressed: () => _downloadFile(widget.message.fileUrl ?? ''),
+          allMediaMessages: widget.allMediaMessages,
+          currentMediaIndex: widget.currentMediaIndex,
         );
 
       case MessageType.file:
-        // Check if it's a video file
-        final fileName = message.fileName ?? '';
-        final extension = fileName.split('.').last.toLowerCase();
-        if (['mp4', 'avi', 'mov', 'mkv', 'webm'].contains(extension)) {
-          return MediaDisplayWidget(
-            fileUrl: message.fileUrl,
-            localFilePath: message.localFilePath,
-            fileName: message.fileName,
-            isMe: isMe,
-            content: message.content,
-            isDownloaded: message.isDownloaded,
-            isDownloading: message.isDownloading,
-            downloadProgress: message.downloadProgress,
-            onDownloadPressed: () => _downloadFile(message.fileUrl ?? ''),
+        return _buildFilePreview();
+
+      case MessageType.location:
+        return _buildLocationMessage();
+
+      case MessageType.voice:
+        // Check if this is a voice note (recorded) or audio file (shared)
+        final fileName = widget.message.fileName ?? '';
+        final isVoiceNote =
+            fileName.startsWith('voice_') || fileName.contains('recording');
+
+        if (isVoiceNote) {
+          // Use VoiceMessagePlayback for recorded voice notes
+          return VoiceMessagePlayback(
+            fileUrl: widget.message.fileUrl,
+            localFilePath: widget.message.localFilePath,
+            fileName: widget.message.fileName,
+            fileSize: widget.message.fileSize,
+            isMe: widget.isMe,
           );
         } else {
-          return _buildFilePreview();
+          // Use AudioFilePlayback for shared audio files
+          return AudioFilePlayback(
+            fileUrl: widget.message.fileUrl,
+            localFilePath: widget.message.localFilePath,
+            fileName: widget.message.fileName,
+            fileSize: widget.message.fileSize,
+            isMe: widget.isMe,
+            isDownloaded: widget.message.isDownloaded,
+            downloadProgress: widget.message.downloadProgress,
+            isDownloading: widget.message.isDownloading,
+            onDownloadComplete: (localPath) {
+              // Update message with local file path
+              _updateMessageWithLocalPath(localPath);
+            },
+          );
         }
 
       default:
         return Text(
-          message.content,
+          widget.message.content,
           style: TextStyle(
             fontSize: 14,
-            color: isMe ? Colors.white : Colors.grey[800],
+            color: widget.isMe ? Colors.white : Colors.grey[800],
             height: 1.3,
           ),
         );
+    }
+  }
+
+  Widget _buildLocationMessage() {
+    return GestureDetector(
+      onTap: () => _openLocation(widget.message.content),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: (widget.isMe ? Colors.white : Colors.grey[100]!).withOpacity(
+            0.3,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: (widget.isMe ? Colors.white : Colors.grey[300]!).withOpacity(
+              0.5,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.location_on_rounded,
+                color: Colors.red[700],
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Location',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isMe ? Colors.white : Colors.grey[800],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.message.content,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: (widget.isMe ? Colors.white : Colors.grey[600]!)
+                          .withOpacity(0.8),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.open_in_new_rounded,
+              color: widget.isMe ? Colors.white : Colors.grey[600],
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openLocation(String location) async {
+    try {
+      // Extract coordinates from location string
+      final RegExp coordRegex = RegExp(r'(\d+\.?\d*),\s*(\d+\.?\d*)');
+      final match = coordRegex.firstMatch(location);
+
+      if (match != null) {
+        final latitude = match.group(1);
+        final longitude = match.group(2);
+
+        // Try to open in Google Maps app first
+        if (await canLaunchUrl(
+          Uri.parse('comgooglemaps://?q=$latitude,$longitude'),
+        )) {
+          await launchUrl(Uri.parse('comgooglemaps://?q=$latitude,$longitude'));
+        } else if (await canLaunchUrl(
+          Uri.parse('https://www.google.com/maps?q=$latitude,$longitude'),
+        )) {
+          await launchUrl(
+            Uri.parse('https://www.google.com/maps?q=$latitude,$longitude'),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error opening location: $e');
     }
   }
 
@@ -299,12 +456,44 @@ class MessageBubble extends StatelessWidget {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
+  EdgeInsets _getMessagePadding() {
+    // For media messages (image, video, voice) and document messages (file), use minimal padding to fill the bubble
+    if (widget.message.type == MessageType.image ||
+        widget.message.type == MessageType.video ||
+        widget.message.type == MessageType.voice ||
+        widget.message.type == MessageType.file) {
+      // If there's a caption, add more padding for better text spacing
+      if (widget.message.content.isNotEmpty &&
+          widget.message.content != widget.message.fileName) {
+        return const EdgeInsets.all(8);
+      }
+      return const EdgeInsets.all(4);
+    }
+
+    // For other message types, use normal padding
+    return const EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+  }
+
+  bool _shouldShowBorder() {
+    // Don't show border for media messages (image, video, voice) and document messages (file)
+    // This makes them look clean like voice notes and images
+    if (widget.message.type == MessageType.image ||
+        widget.message.type == MessageType.video ||
+        widget.message.type == MessageType.voice ||
+        widget.message.type == MessageType.file) {
+      return false;
+    }
+
+    // Show border for text messages and other types
+    return true;
+  }
+
   Widget _buildFilePreview() {
-    final fileName = message.fileName ?? 'Unknown file';
+    final fileName = widget.message.fileName ?? 'Unknown file';
     final fileExtension = fileName.split('.').last.toLowerCase();
 
     // Check if file is downloaded
-    if (message.isDownloaded && message.localFilePath != null) {
+    if (widget.message.isDownloaded && widget.message.localFilePath != null) {
       // Show clear content for downloaded files
       return _buildDownloadedFilePreview(fileExtension);
     } else {
@@ -315,9 +504,7 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildDownloadedFilePreview(String fileExtension) {
     // Images and videos are handled by MediaDisplayWidget, so only handle other file types
-    if (['mp3', 'wav', 'aac', 'm4a', 'ogg'].contains(fileExtension)) {
-      return _buildClearAudioPreview();
-    } else if (['pdf'].contains(fileExtension)) {
+    if (['pdf'].contains(fileExtension)) {
       return _buildClearPdfPreview();
     } else {
       return _buildClearGenericFilePreview();
@@ -326,386 +513,92 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildUndownloadedFilePreview(String fileExtension) {
     // Images and videos are handled by MediaDisplayWidget, so only handle other file types
-    if (['mp3', 'wav', 'aac', 'm4a', 'ogg'].contains(fileExtension)) {
-      return _buildBlurryAudioPreview();
-    } else if (['pdf'].contains(fileExtension)) {
+    if (['pdf'].contains(fileExtension)) {
       return _buildBlurryPdfPreview();
     } else {
       return _buildBlurryGenericFilePreview();
     }
   }
 
-  // Blurry preview for undownloaded audio files
-  Widget _buildBlurryAudioPreview() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: (isMe ? Colors.white : Colors.grey[100]!).withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isMe ? Colors.white : Colors.grey[300]!).withOpacity(0.5),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (isMe ? Colors.white : Colors.blue[100]!).withOpacity(
-                    0.5,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.audiotrack,
-                  color: (isMe ? Colors.white : Colors.blue[700]!).withOpacity(
-                    0.7,
-                  ),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'Audio File',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: (isMe ? Colors.white : Colors.grey[800]!)
-                            .withOpacity(0.8),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (message.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatFileSize(message.fileSize!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (isMe ? Colors.white : Colors.grey[600]!)
-                              .withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Download button
-          Center(
-            child: GestureDetector(
-              onTap: () => _downloadFile(message.fileUrl ?? ''),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(25),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.download_rounded, color: Colors.white, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Download Audio',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Progress indicator if downloading
-          if (message.isDownloading) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      value: message.downloadProgress,
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${(message.downloadProgress * 100).toInt()}%',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // Clear preview for downloaded audio files
-  Widget _buildClearAudioPreview() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: (isMe ? Colors.white : Colors.grey[100]!).withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isMe ? Colors.white : Colors.grey[300]!).withOpacity(0.5),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color:
-                      isMe ? Colors.white.withOpacity(0.2) : Colors.blue[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.audiotrack,
-                  color: isMe ? Colors.white : Colors.blue[700],
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'Audio File',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isMe ? Colors.white : Colors.grey[800],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (message.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatFileSize(message.fileSize!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (isMe ? Colors.white : Colors.grey[600]!)
-                              .withOpacity(0.8),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Play button
-          GestureDetector(
-            onTap: () => _downloadFile(message.fileUrl ?? ''),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isMe ? Colors.white.withOpacity(0.2) : Colors.blue[100],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color:
-                      isMe ? Colors.white.withOpacity(0.3) : Colors.blue[300]!,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.play_arrow_rounded,
-                    color: isMe ? Colors.white : Colors.blue[700],
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Play Audio',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: isMe ? Colors.white : Colors.blue[700],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Blurry preview for undownloaded PDF files
   Widget _buildBlurryPdfPreview() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: (isMe ? Colors.white : Colors.grey[100]!).withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isMe ? Colors.white : Colors.grey[300]!).withOpacity(0.5),
-        ),
+        color: widget.isMe ? Colors.red[600] : Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (isMe ? Colors.white : Colors.red[100]!).withOpacity(
-                    0.5,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.picture_as_pdf,
-                  color: (isMe ? Colors.white : Colors.red[700]!).withOpacity(
-                    0.7,
-                  ),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'PDF Document',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: (isMe ? Colors.white : Colors.grey[800]!)
-                            .withOpacity(0.8),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (message.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatFileSize(message.fileSize!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (isMe ? Colors.white : Colors.grey[600]!)
-                              .withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Download button
-          Center(
-            child: GestureDetector(
-              onTap: () => _downloadFile(message.fileUrl ?? ''),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(25),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.download_rounded, color: Colors.white, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Download PDF',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          // PDF Icon
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: widget.isMe ? Colors.white : Colors.red[600],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(
+              Icons.picture_as_pdf_rounded,
+              color: widget.isMe ? Colors.red[600] : Colors.white,
+              size: 24,
             ),
           ),
-          // Progress indicator if downloading
-          if (message.isDownloading) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      value: message.downloadProgress,
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
+
+          const SizedBox(width: 12),
+
+          // File info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.message.fileName ?? 'PDF Document',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isMe ? Colors.white : Colors.grey[800],
                   ),
-                  const SizedBox(width: 8),
+                ),
+                if (widget.message.fileSize != null) ...[
+                  const SizedBox(height: 2),
                   Text(
-                    '${(message.downloadProgress * 100).toInt()}%',
+                    _formatFileSize(widget.message.fileSize!),
                     style: TextStyle(
-                      color: Colors.white,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color:
+                          widget.isMe
+                              ? Colors.white.withOpacity(0.8)
+                              : Colors.grey[600]!,
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Download button
+          GestureDetector(
+            onTap: () => _downloadFile(widget.message.fileUrl ?? ''),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color:
+                    widget.isMe
+                        ? Colors.white.withOpacity(0.2)
+                        : Colors.red[100],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.download_rounded,
+                color: widget.isMe ? Colors.white : Colors.red[600],
+                size: 20,
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -714,94 +607,79 @@ class MessageBubble extends StatelessWidget {
   // Clear preview for downloaded PDF files
   Widget _buildClearPdfPreview() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: (isMe ? Colors.white : Colors.grey[100]!).withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isMe ? Colors.white : Colors.grey[300]!).withOpacity(0.5),
-        ),
+        color: widget.isMe ? Colors.red[600] : Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isMe ? Colors.white.withOpacity(0.2) : Colors.red[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.picture_as_pdf,
-                  color: isMe ? Colors.white : Colors.red[700],
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'PDF Document',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isMe ? Colors.white : Colors.grey[800],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (message.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatFileSize(message.fileSize!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (isMe ? Colors.white : Colors.grey[600]!)
-                              .withOpacity(0.8),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+          // PDF Icon
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: widget.isMe ? Colors.white : Colors.red[600],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(
+              Icons.picture_as_pdf_rounded,
+              color: widget.isMe ? Colors.red[600] : Colors.white,
+              size: 24,
+            ),
           ),
-          const SizedBox(height: 12),
-          // Open PDF button
-          GestureDetector(
-            onTap: () => _downloadFile(message.fileUrl ?? ''),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isMe ? Colors.white.withOpacity(0.2) : Colors.red[100],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color:
-                      isMe ? Colors.white.withOpacity(0.3) : Colors.red[300]!,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.open_in_new_rounded,
-                    color: isMe ? Colors.white : Colors.red[700],
-                    size: 20,
+
+          const SizedBox(width: 12),
+
+          // File info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.message.fileName ?? 'PDF Document',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isMe ? Colors.white : Colors.grey[800],
                   ),
-                  const SizedBox(width: 8),
+                ),
+                if (widget.message.fileSize != null) ...[
+                  const SizedBox(height: 2),
                   Text(
-                    'Open PDF',
+                    _formatFileSize(widget.message.fileSize!),
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: isMe ? Colors.white : Colors.red[700],
+                      fontSize: 12,
+                      color:
+                          widget.isMe
+                              ? Colors.white.withOpacity(0.8)
+                              : Colors.grey[600]!,
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Open button
+          GestureDetector(
+            onTap: () => _openDocument(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color:
+                    widget.isMe
+                        ? Colors.white.withOpacity(0.2)
+                        : Colors.red[100],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.open_in_new_rounded,
+                color: widget.isMe ? Colors.white : Colors.red[600],
+                size: 20,
               ),
             ),
           ),
@@ -813,136 +691,82 @@ class MessageBubble extends StatelessWidget {
   // Blurry preview for undownloaded generic files
   Widget _buildBlurryGenericFilePreview() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: (isMe ? Colors.white : Colors.grey[100]!).withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isMe ? Colors.white : Colors.grey[300]!).withOpacity(0.5),
-        ),
+        color: widget.isMe ? Colors.blue[600] : Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (isMe ? Colors.white : Colors.grey[200]!).withOpacity(
-                    0.5,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _getFileIcon(message.fileName ?? ''),
-                  color: (isMe ? Colors.white : Colors.grey[600]!).withOpacity(
-                    0.7,
-                  ),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'Unknown file',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: (isMe ? Colors.white : Colors.grey[800]!)
-                            .withOpacity(0.8),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (message.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatFileSize(message.fileSize!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (isMe ? Colors.white : Colors.grey[600]!)
-                              .withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Download button
-          Center(
-            child: GestureDetector(
-              onTap: () => _downloadFile(message.fileUrl ?? ''),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(25),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.download_rounded, color: Colors.white, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Download File',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          // File Icon
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: widget.isMe ? Colors.white : Colors.blue[600],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(
+              _getFileIcon(widget.message.fileName ?? ''),
+              color: widget.isMe ? Colors.blue[600] : Colors.white,
+              size: 24,
             ),
           ),
-          // Progress indicator if downloading
-          if (message.isDownloading) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      value: message.downloadProgress,
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
+
+          const SizedBox(width: 12),
+
+          // File info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.message.fileName ?? 'Document',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isMe ? Colors.white : Colors.grey[800],
                   ),
-                  const SizedBox(width: 8),
+                ),
+                if (widget.message.fileSize != null) ...[
+                  const SizedBox(height: 2),
                   Text(
-                    '${(message.downloadProgress * 100).toInt()}%',
+                    _formatFileSize(widget.message.fileSize!),
                     style: TextStyle(
-                      color: Colors.white,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color:
+                          widget.isMe
+                              ? Colors.white.withOpacity(0.8)
+                              : Colors.grey[600]!,
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Download button
+          GestureDetector(
+            onTap: () => _downloadFile(widget.message.fileUrl ?? ''),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color:
+                    widget.isMe
+                        ? Colors.white.withOpacity(0.2)
+                        : Colors.blue[100],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.download_rounded,
+                color: widget.isMe ? Colors.white : Colors.blue[600],
+                size: 20,
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -951,95 +775,79 @@ class MessageBubble extends StatelessWidget {
   // Clear preview for downloaded generic files
   Widget _buildClearGenericFilePreview() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: (isMe ? Colors.white : Colors.grey[100]!).withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: (isMe ? Colors.white : Colors.grey[300]!).withOpacity(0.5),
-        ),
+        color: widget.isMe ? Colors.blue[600] : Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color:
-                      isMe ? Colors.white.withOpacity(0.2) : Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _getFileIcon(message.fileName ?? ''),
-                  color: isMe ? Colors.white : Colors.grey[600],
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.fileName ?? 'Unknown file',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: isMe ? Colors.white : Colors.grey[800],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (message.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        _formatFileSize(message.fileSize!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (isMe ? Colors.white : Colors.grey[600]!)
-                              .withOpacity(0.8),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+          // File Icon
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: widget.isMe ? Colors.white : Colors.blue[600],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(
+              _getFileIcon(widget.message.fileName ?? ''),
+              color: widget.isMe ? Colors.blue[600] : Colors.white,
+              size: 24,
+            ),
           ),
-          const SizedBox(height: 12),
-          // Download button
-          GestureDetector(
-            onTap: () => _downloadFile(message.fileUrl ?? ''),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isMe ? Colors.white.withOpacity(0.2) : Colors.blue[100],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color:
-                      isMe ? Colors.white.withOpacity(0.3) : Colors.blue[300]!,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.download_rounded,
-                    color: isMe ? Colors.white : Colors.blue[700],
-                    size: 20,
+
+          const SizedBox(width: 12),
+
+          // File info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.message.fileName ?? 'Document',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isMe ? Colors.white : Colors.grey[800],
                   ),
-                  const SizedBox(width: 8),
+                ),
+                if (widget.message.fileSize != null) ...[
+                  const SizedBox(height: 2),
                   Text(
-                    'Download',
+                    _formatFileSize(widget.message.fileSize!),
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: isMe ? Colors.white : Colors.blue[700],
+                      fontSize: 12,
+                      color:
+                          widget.isMe
+                              ? Colors.white.withOpacity(0.8)
+                              : Colors.grey[600]!,
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Open button
+          GestureDetector(
+            onTap: () => _openDocument(),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color:
+                    widget.isMe
+                        ? Colors.white.withOpacity(0.2)
+                        : Colors.blue[100],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.open_in_new_rounded,
+                color: widget.isMe ? Colors.white : Colors.blue[600],
+                size: 20,
               ),
             ),
           ),
@@ -1048,37 +856,103 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  Future<void> _openDocument() async {
+    try {
+      // Check if file is downloaded
+      if (widget.message.isDownloaded && widget.message.localFilePath != null) {
+        // Open in-app viewer
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => DocumentViewerScreen(
+                  fileUrl: widget.message.fileUrl,
+                  localFilePath: widget.message.localFilePath,
+                  fileName:
+                      widget.message.fileName ??
+                      widget.message.fileName ??
+                      'Document',
+                  isMe: widget.isMe,
+                ),
+          ),
+        );
+      } else {
+        // Download first, then open
+        await _downloadFile(widget.message.fileUrl ?? '');
+        // After download, the file will be available locally
+        // You might want to show a success message and allow user to tap again
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download completed. Tap again to open.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error opening document: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening document: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _downloadFile(String fileUrl) async {
     try {
       print('DEBUG: Starting download for: $fileUrl');
-
-      // Update download state to downloading
-      if (onDownloadStateChanged != null) {
-        final updatedMessage = message.copyWith(
-          isDownloading: true,
-          downloadProgress: 0.0,
-        );
-        onDownloadStateChanged!(updatedMessage);
-      }
 
       // Initialize local file storage service
       final localStorage = LocalFileStorageService();
       await localStorage.initialize();
 
+      // First check if file is already downloaded
+      final existingFilePath = await localStorage.getLocalFilePathForMessage(
+        chatId: widget.message.chatId,
+        messageId: widget.message.id,
+        fileName: widget.message.fileName ?? 'file',
+      );
+
+      if (existingFilePath != null && await File(existingFilePath).exists()) {
+        print('DEBUG: File already exists locally: $existingFilePath');
+
+        // Update download state to downloaded with existing local path
+        if (widget.onDownloadStateChanged != null) {
+          final updatedMessage = widget.message.copyWith(
+            isDownloaded: true,
+            isDownloading: false,
+            downloadProgress: 1.0,
+            localFilePath: existingFilePath,
+          );
+          widget.onDownloadStateChanged!(updatedMessage);
+        }
+        return;
+      }
+
+      // Update download state to downloading
+      if (widget.onDownloadStateChanged != null) {
+        final updatedMessage = widget.message.copyWith(
+          isDownloading: true,
+          downloadProgress: 0.0,
+        );
+        widget.onDownloadStateChanged!(updatedMessage);
+      }
+
       // Download and save file locally
       final localFilePath = await localStorage.downloadAndSaveFile(
         fileUrl: fileUrl,
-        fileName: message.fileName ?? 'file',
-        chatId: message.chatId,
-        messageId: message.id,
+        fileName: widget.message.fileName ?? 'file',
+        chatId: widget.message.chatId,
+        messageId: widget.message.id,
         onProgress: (progress) {
           // Update download progress
-          if (onDownloadStateChanged != null) {
-            final updatedMessage = message.copyWith(
+          if (widget.onDownloadStateChanged != null) {
+            final updatedMessage = widget.message.copyWith(
               isDownloading: true,
               downloadProgress: progress,
             );
-            onDownloadStateChanged!(updatedMessage);
+            widget.onDownloadStateChanged!(updatedMessage);
           }
         },
       );
@@ -1087,14 +961,14 @@ class MessageBubble extends StatelessWidget {
         print('DEBUG: File downloaded and saved locally: $localFilePath');
 
         // Update download state to downloaded with local path
-        if (onDownloadStateChanged != null) {
-          final updatedMessage = message.copyWith(
+        if (widget.onDownloadStateChanged != null) {
+          final updatedMessage = widget.message.copyWith(
             isDownloaded: true,
             isDownloading: false,
             downloadProgress: 1.0,
             localFilePath: localFilePath,
           );
-          onDownloadStateChanged!(updatedMessage);
+          widget.onDownloadStateChanged!(updatedMessage);
         }
 
         // Launch the local file
@@ -1102,13 +976,9 @@ class MessageBubble extends StatelessWidget {
         if (await localFile.exists()) {
           // For images, we don't need to launch externally since they're displayed in the chat
           // For other files, we can launch them
-          if (![
-            'jpg',
-            'jpeg',
-            'png',
-            'gif',
-            'webp',
-          ].contains(message.fileName?.split('.').last.toLowerCase() ?? '')) {
+          if (!['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(
+            widget.message.fileName?.split('.').last.toLowerCase() ?? '',
+          )) {
             final uri = Uri.file(localFilePath);
             if (await canLaunchUrl(uri)) {
               await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1120,25 +990,38 @@ class MessageBubble extends StatelessWidget {
         print('ERROR: Failed to download file locally');
 
         // Update download state to failed
-        if (onDownloadStateChanged != null) {
-          final updatedMessage = message.copyWith(
+        if (widget.onDownloadStateChanged != null) {
+          final updatedMessage = widget.message.copyWith(
             isDownloading: false,
             downloadProgress: 0.0,
           );
-          onDownloadStateChanged!(updatedMessage);
+          widget.onDownloadStateChanged!(updatedMessage);
         }
       }
     } catch (e) {
       print('ERROR: Failed to download file: ${e.toString()}');
 
       // Update download state to failed
-      if (onDownloadStateChanged != null) {
-        final updatedMessage = message.copyWith(
+      if (widget.onDownloadStateChanged != null) {
+        final updatedMessage = widget.message.copyWith(
           isDownloading: false,
           downloadProgress: 0.0,
         );
-        onDownloadStateChanged!(updatedMessage);
+        widget.onDownloadStateChanged!(updatedMessage);
       }
+    }
+  }
+
+  void _updateMessageWithLocalPath(String localPath) {
+    // Update the message with the local file path using the existing callback
+    if (widget.onDownloadStateChanged != null) {
+      final updatedMessage = widget.message.copyWith(
+        isDownloaded: true,
+        isDownloading: false,
+        downloadProgress: 1.0,
+        localFilePath: localPath,
+      );
+      widget.onDownloadStateChanged!(updatedMessage);
     }
   }
 }

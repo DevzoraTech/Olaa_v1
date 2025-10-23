@@ -100,3 +100,4 @@ Once set up, the app will:
 ## 🔄 Alternative Setup
 
 If the main script fails, use `SIMPLE_CHAT_STORAGE_SETUP.sql` for basic setup, then manually configure policies in the dashboard.
+

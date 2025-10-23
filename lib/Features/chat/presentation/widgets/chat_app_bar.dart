@@ -1,6 +1,6 @@
 // Presentation Layer - Chat App Bar Widget
 import 'package:flutter/material.dart';
-import '../../domain/models/chat_model.dart';
+import 'package:pulse_campus/Features/chat/domain/models/chat_model.dart';
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Chat chat;

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/supabase_database_service.dart';
 import '../../../../core/services/supabase_auth_service.dart';
-import '../../domain/models/chat_model.dart';
+import 'package:pulse_campus/Features/chat/domain/models/chat_model.dart';
 
 class ConversationList extends StatefulWidget {
   final String category;
@@ -173,6 +173,14 @@ class _ConversationListState extends State<ConversationList> {
             participants: chatParticipants,
           );
 
+          // Verify the chat name is correct
+          print('DEBUG: Chat name verification:');
+          print('DEBUG: - Chat.name: ${chat.name}');
+          print(
+            'DEBUG: - Chat.getOtherParticipantName(${currentUser.id}): ${chat.getOtherParticipantName(currentUser.id)}',
+          );
+          print('DEBUG: - Other participant name: ${otherParticipant.name}');
+
           // Check if chat has actual messages
           final hasMessages = await _chatHasMessages(chatData['id']);
 
@@ -306,7 +314,10 @@ class _ConversationListState extends State<ConversationList> {
                           )
                           : Icon(chat.icon, color: chat.color, size: 24),
                 ),
-                if (chat.isOnline)
+                if (!chat.isGroup &&
+                    chat.isOtherParticipantOnline(
+                      _authService.currentUser?.id ?? '',
+                    ))
                   Positioned(
                     bottom: 0,
                     right: 0,
@@ -333,7 +344,11 @@ class _ConversationListState extends State<ConversationList> {
                     children: [
                       Expanded(
                         child: Text(
-                          chat.name,
+                          chat.isGroup
+                              ? chat.name
+                              : chat.getOtherParticipantName(
+                                _authService.currentUser?.id ?? '',
+                              ),
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,

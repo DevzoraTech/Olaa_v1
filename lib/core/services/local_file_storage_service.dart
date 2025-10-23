@@ -73,12 +73,38 @@ class LocalFileStorageService {
 
       print('DEBUG: Downloading to: $localFilePath');
 
-      // Download file
-      final response = await http.get(Uri.parse(fileUrl));
+      // Check if file already exists
+      if (await localFile.exists()) {
+        print('DEBUG: File already exists locally: $localFilePath');
+        onProgress?.call(1.0);
+        return localFilePath;
+      }
 
-      if (response.statusCode == 200) {
-        // Save file locally
-        await localFile.writeAsBytes(response.bodyBytes);
+      // Download file with progress tracking
+      final client = http.Client();
+      final request = http.Request('GET', Uri.parse(fileUrl));
+      final streamedResponse = await client.send(request);
+
+      if (streamedResponse.statusCode == 200) {
+        final totalBytes = streamedResponse.contentLength ?? 0;
+        int downloadedBytes = 0;
+
+        // Create file and write stream
+        final fileStream = localFile.openWrite();
+
+        await for (final chunk in streamedResponse.stream) {
+          fileStream.add(chunk);
+          downloadedBytes += chunk.length;
+
+          // Update progress if callback provided
+          if (onProgress != null && totalBytes > 0) {
+            final progress = downloadedBytes / totalBytes;
+            onProgress(progress);
+          }
+        }
+
+        await fileStream.close();
+        client.close();
 
         print('DEBUG: File saved locally: $localFilePath');
         print('DEBUG: File size: ${await localFile.length()} bytes');
@@ -86,12 +112,43 @@ class LocalFileStorageService {
         return localFilePath;
       } else {
         print(
-          'ERROR: Failed to download file. Status code: ${response.statusCode}',
+          'ERROR: Failed to download file. Status code: ${streamedResponse.statusCode}',
         );
+        client.close();
         return null;
       }
     } catch (e) {
       print('ERROR: Failed to download and save file: $e');
+      return null;
+    }
+  }
+
+  // Check if a file is already downloaded for a specific message
+  Future<String?> getLocalFilePathForMessage({
+    required String chatId,
+    required String messageId,
+    required String fileName,
+  }) async {
+    try {
+      final chatDir = Directory(path.join(cacheDirectory.path, chatId));
+      if (!await chatDir.exists()) {
+        return null;
+      }
+
+      // Look for existing files for this message
+      final files = await chatDir.list().toList();
+      for (final file in files) {
+        if (file is File) {
+          final fileName = path.basename(file.path);
+          // Check if this file belongs to the message (contains messageId)
+          if (fileName.contains(messageId)) {
+            return file.path;
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      print('ERROR: Failed to get local file path for message: $e');
       return null;
     }
   }

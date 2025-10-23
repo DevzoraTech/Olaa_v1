@@ -7,7 +7,8 @@ import '../widgets/profile_stats.dart';
 import '../widgets/profile_tabs.dart';
 import '../widgets/profile_actions.dart';
 import '../../../posting/presentation/screens/roommate_request_screen.dart';
-import '../../../posting/presentation/screens/marketplace_posting_screen.dart';
+import '../../../posting/presentation/screens/marketplace_posting_screen.dart'
+    as marketplace;
 import '../../../posting/presentation/screens/step_by_step_hostel_posting_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -268,7 +269,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _navigateToMarketplacePosting() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const MarketplacePostingScreen()),
+      MaterialPageRoute(
+        builder: (context) => const marketplace.MarketplacePostingScreen(),
+      ),
     );
   }
 

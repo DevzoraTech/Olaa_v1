@@ -4,8 +4,8 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/supabase_database_service.dart';
 import '../../../../core/services/supabase_auth_service.dart';
 import '../../../../core/config/supabase_config.dart';
-import '../../domain/models/chat_model.dart';
-import '../screens/chat_detail_screen.dart';
+import 'package:pulse_campus/Features/chat/domain/models/chat_model.dart';
+import '../screens/improved_chat_detail_screen.dart';
 
 class NewChatScreen extends StatefulWidget {
   final VoidCallback? onChatCreated;
@@ -158,7 +158,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
             context,
             MaterialPageRoute(
               builder:
-                  (context) => ChatDetailScreen(
+                  (context) => ImprovedChatDetailScreen(
                     chat: chat,
                     onChatUpdated: widget.onChatCreated,
                   ),

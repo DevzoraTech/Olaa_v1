@@ -1,7 +1,7 @@
 // Core Service - Chat Service with Realtime Support
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../Features/chat/domain/models/chat_model.dart';
+import 'package:pulse_campus/Features/chat/domain/models/chat_model.dart';
 import '../config/supabase_config.dart';
 import 'supabase_auth_service.dart';
 
@@ -41,26 +41,29 @@ class ChatService {
       print('DEBUG: Subscribing to chat: $chatId');
 
       // Subscribe to messages for this chat
-      _messagesChannel = SupabaseConfig.client
-          .channel('messages:$chatId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.insert,
-            schema: 'public',
-            table: 'messages',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'chat_id',
-              value: chatId,
-            ),
-            callback: (payload) async {
-              print('DEBUG: New message received: ${payload.newRecord}');
-              final message = await _parseMessageFromPayload(payload.newRecord);
-              if (message != null) {
-                _messagesController.add(message);
-              }
-            },
-          )
-          .subscribe();
+      _messagesChannel =
+          SupabaseConfig.client
+              .channel('messages:$chatId')
+              .onPostgresChanges(
+                event: PostgresChangeEvent.insert,
+                schema: 'public',
+                table: 'messages',
+                filter: PostgresChangeFilter(
+                  type: PostgresChangeFilterType.eq,
+                  column: 'chat_id',
+                  value: chatId,
+                ),
+                callback: (payload) async {
+                  print('DEBUG: New message received: ${payload.newRecord}');
+                  final message = await _parseMessageFromPayload(
+                    payload.newRecord,
+                  );
+                  if (message != null) {
+                    _messagesController.add(message);
+                  }
+                },
+              )
+              .subscribe();
 
       // Subscribe to typing indicators
       _subscribeToTypingIndicators(chatId);
@@ -73,32 +76,35 @@ class ChatService {
 
   /// Subscribe to typing indicators for a chat
   void _subscribeToTypingIndicators(String chatId) {
-    _typingChannel = SupabaseConfig.client
-        .channel('typing:$chatId')
-        .onBroadcast(
-          event: 'typing',
-          callback: (payload) {
-            final userId = payload['user_id'] as String?;
-            final userName = payload['user_name'] as String?;
-            final isTyping = payload['is_typing'] as bool? ?? false;
+    _typingChannel =
+        SupabaseConfig.client
+            .channel('typing:$chatId')
+            .onBroadcast(
+              event: 'typing',
+              callback: (payload) {
+                final userId = payload['user_id'] as String?;
+                final userName = payload['user_name'] as String?;
+                final isTyping = payload['is_typing'] as bool? ?? false;
 
-            if (userId != null && userName != null) {
-              if (isTyping) {
-                _typingUsers[userId] = DateTime.now();
-              } else {
-                _typingUsers.remove(userId);
-              }
+                if (userId != null && userName != null) {
+                  if (isTyping) {
+                    _typingUsers[userId] = DateTime.now();
+                  } else {
+                    _typingUsers.remove(userId);
+                  }
 
-              _typingController.add(TypingIndicator(
-                chatId: chatId,
-                userId: userId,
-                userName: userName,
-                isTyping: isTyping,
-              ));
-            }
-          },
-        )
-        .subscribe();
+                  _typingController.add(
+                    TypingIndicator(
+                      chatId: chatId,
+                      userId: userId,
+                      userName: userName,
+                      isTyping: isTyping,
+                    ),
+                  );
+                }
+              },
+            )
+            .subscribe();
 
     // Start cleanup timer for stale typing indicators
     _typingCleanupTimer?.cancel();
@@ -121,12 +127,14 @@ class ChatService {
 
     for (final userId in staleUsers) {
       _typingUsers.remove(userId);
-      _typingController.add(TypingIndicator(
-        chatId: chatId,
-        userId: userId,
-        userName: '',
-        isTyping: false,
-      ));
+      _typingController.add(
+        TypingIndicator(
+          chatId: chatId,
+          userId: userId,
+          userName: '',
+          isTyping: false,
+        ),
+      );
     }
   }
 
@@ -161,19 +169,20 @@ class ChatService {
       print('DEBUG: Subscribing to user chats');
 
       // Subscribe to changes in chats where user is a participant
-      _chatsChannel = SupabaseConfig.client
-          .channel('chats:${currentUser.id}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'chats',
-            callback: (payload) async {
-              print('DEBUG: Chat update received: ${payload.newRecord}');
-              // Emit event to refresh chats list
-              // The chat list widget will handle the refresh
-            },
-          )
-          .subscribe();
+      _chatsChannel =
+          SupabaseConfig.client
+              .channel('chats:${currentUser.id}')
+              .onPostgresChanges(
+                event: PostgresChangeEvent.all,
+                schema: 'public',
+                table: 'chats',
+                callback: (payload) async {
+                  print('DEBUG: Chat update received: ${payload.newRecord}');
+                  // Emit event to refresh chats list
+                  // The chat list widget will handle the refresh
+                },
+              )
+              .subscribe();
 
       print('DEBUG: Successfully subscribed to user chats');
     } catch (e) {
@@ -220,12 +229,15 @@ class ChatService {
 
       if (!isMe) {
         try {
-          final profileData = await SupabaseConfig.from('profiles')
-              .select('first_name, last_name, profile_image_url')
-              .eq('id', senderId)
-              .single();
+          final profileData =
+              await SupabaseConfig.from('profiles')
+                  .select('first_name, last_name, profile_image_url')
+                  .eq('id', senderId)
+                  .single();
 
-          senderName = '${profileData['first_name'] ?? ''} ${profileData['last_name'] ?? ''}'.trim();
+          senderName =
+              '${profileData['first_name'] ?? ''} ${profileData['last_name'] ?? ''}'
+                  .trim();
           senderProfileImageUrl = profileData['profile_image_url'];
         } catch (e) {
           print('ERROR: Failed to fetch sender profile: $e');
@@ -250,8 +262,13 @@ class ChatService {
         fileSize: data['file_size'],
         replyToMessageId: data['reply_to_message_id'],
         isEdited: data['is_edited'] ?? false,
-        editedAt: data['edited_at'] != null ? DateTime.parse(data['edited_at']) : null,
-        createdAt: DateTime.parse(data['created_at'] ?? DateTime.now().toIso8601String()),
+        editedAt:
+            data['edited_at'] != null
+                ? DateTime.parse(data['edited_at'])
+                : null,
+        createdAt: DateTime.parse(
+          data['created_at'] ?? DateTime.now().toIso8601String(),
+        ),
         isRead: data['is_read'] ?? false,
         isDelivered: data['is_delivered'] ?? true,
       );

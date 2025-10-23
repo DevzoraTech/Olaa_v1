@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../widgets/chat_header.dart';
 import '../widgets/chat_category_tabs.dart';
 import '../widgets/conversation_list.dart';
-import 'chat_detail_screen.dart';
+import 'improved_chat_detail_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -78,7 +78,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   context,
                   MaterialPageRoute(
                     builder:
-                        (context) => ChatDetailScreen(
+                        (context) => ImprovedChatDetailScreen(
                           chat: chat,
                           onChatUpdated: _refreshConversations,
                         ),
